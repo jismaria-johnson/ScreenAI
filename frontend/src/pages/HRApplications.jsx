@@ -67,6 +67,26 @@ function HRApplications() {
                     {application.recommendation}
                   </p>
 
+                  <p>
+                    <strong>Matched Skills:</strong>{" "}
+                    {application.matched_skills || "None"}
+                  </p>
+
+                  <p>
+                    <strong>Missing Skills:</strong>{" "}
+                    {application.missing_skills || "None"}
+                  </p>
+
+                  <p>
+                    <strong>Experience Match:</strong>{" "}
+                    {application.experience_match || "None"}
+                  </p>
+
+                  <p>
+                    <strong>AI Feedback:</strong>{" "}
+                    {application.ai_feedback || "Not evaluated yet"}
+                  </p>
+
                   <div className="d-flex gap-2">
                     <a
                       href={resumeUrl}

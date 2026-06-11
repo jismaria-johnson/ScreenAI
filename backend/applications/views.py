@@ -1,9 +1,13 @@
 from rest_framework import generics
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import ValidationError
+
 from .models import Application
 from .serializers import ApplicationSerializer
 from .permissions import IsCandidateUser, IsHRUser
+
+from ai_engine.resume_parser import extract_text_from_pdf
+from ai_engine.gemini_scorer import score_resume_with_gemini
 
 
 class ApplyJobView(generics.CreateAPIView):
@@ -22,7 +26,29 @@ class ApplyJobView(generics.CreateAPIView):
         if already_applied:
             raise ValidationError("You have already applied for this job.")
 
-        serializer.save(candidate=self.request.user)
+        application = serializer.save(candidate=self.request.user)
+
+        resume_path = application.resume.path
+
+        extracted_text = extract_text_from_pdf(resume_path)
+        application.extracted_resume_text = extracted_text
+
+        if extracted_text:
+            ai_result = score_resume_with_gemini(extracted_text, job)
+
+            application.ai_score = ai_result["ai_score"]
+            application.matched_skills = ai_result["matched_skills"]
+            application.missing_skills = ai_result["missing_skills"]
+            application.experience_match = ai_result["experience_match"]
+            application.ai_feedback = ai_result["ai_feedback"]
+            application.recommendation = ai_result["recommendation"]
+        else:
+            application.ai_score = 0
+            application.experience_match = "Resume text could not be extracted."
+            application.ai_feedback = "Could not read resume. Please review manually."
+            application.recommendation = "review"
+
+        application.save()
 
 
 class MyApplicationsView(generics.ListAPIView):
