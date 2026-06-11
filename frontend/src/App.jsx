@@ -7,6 +7,9 @@ import CandidateDashboard from "./pages/CandidateDashboard";
 import HRDashboard from "./pages/HRDashboard";
 import JobList from "./pages/JobList";
 import AddJob from "./pages/AddJob";
+import ApplyJob from "./pages/ApplyJob";
+import MyApplications from "./pages/MyApplications";
+import HRApplications from "./pages/HRApplications";
 
 function App() {
   return (
@@ -21,6 +24,9 @@ function App() {
         <Route path="/hr-dashboard" element={<HRDashboard />} />
         <Route path="/jobs" element={<JobList />} />
         <Route path="/add-job" element={<AddJob />} />
+        <Route path="/apply/:jobId" element={<ApplyJob />} />
+        <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/hr-applications" element={<HRApplications />} />
       </Routes>
     </>
   );
