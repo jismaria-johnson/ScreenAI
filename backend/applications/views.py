@@ -1,6 +1,8 @@
 from rest_framework import generics
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Application
 from .serializers import ApplicationSerializer
@@ -66,6 +68,49 @@ class HRApplicationsView(generics.ListAPIView):
     permission_classes = [IsHRUser]
 
     def get_queryset(self):
-        return Application.objects.filter(
+        applications = Application.objects.filter(
             job__hr_user=self.request.user
         ).order_by("-submitted_at")
+
+        job_id = self.request.query_params.get("job")
+        min_score = self.request.query_params.get("min_score")
+        recommendation = self.request.query_params.get("recommendation")
+        status = self.request.query_params.get("status")
+
+        if job_id:
+            applications = applications.filter(job_id=job_id)
+
+        if min_score:
+            applications = applications.filter(ai_score__gte=min_score)
+
+        if recommendation:
+            applications = applications.filter(recommendation=recommendation)
+
+        if status:
+            applications = applications.filter(application_status=status)
+
+        return applications
+
+
+class UpdateApplicationStatusView(APIView):
+    permission_classes = [IsHRUser]
+
+    def patch(self, request, pk):
+        try:
+            application = Application.objects.get(
+                pk=pk,
+                job__hr_user=request.user
+            )
+        except Application.DoesNotExist:
+            raise ValidationError("Application not found.")
+
+        new_status = request.data.get("application_status")
+
+        if new_status not in ["pending", "shortlisted", "rejected"]:
+            raise ValidationError("Invalid application status.")
+
+        application.application_status = new_status
+        application.save()
+
+        serializer = ApplicationSerializer(application)
+        return Response(serializer.data)
