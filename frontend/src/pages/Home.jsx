@@ -1,6 +1,17 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
 function Home() {
+  const token = localStorage.getItem("access");
+  const role = localStorage.getItem("role");
+
+  if (token && role === "candidate") {
+    return <Navigate to="/candidate-dashboard" replace />;
+  }
+
+  if (token && role === "hr") {
+    return <Navigate to="/hr-dashboard" replace />;
+  }
+
   return (
     <div className="container py-5">
       <div className="text-center">
@@ -12,7 +23,7 @@ function Home() {
 
         <p className="text-muted">
           Candidates can apply for jobs by uploading resumes. HR users can post
-          jobs, view applications, and later use AI-based screening.
+          jobs, review applications, and use AI-assisted resume screening.
         </p>
 
         <div className="mt-4">

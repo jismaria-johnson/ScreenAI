@@ -25,49 +25,85 @@ function Navbar() {
 
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
-      <Link className="navbar-brand fw-bold" to={getHomePath()}>
+      <Link
+        className="navbar-brand fw-bold"
+        to={getHomePath()}
+      >
         ScreenAI
       </Link>
 
-      <div className="ms-auto d-flex gap-3 align-items-center">
-        <Link className="nav-link text-white" to={getHomePath()}>
+      <div className="ms-auto d-flex gap-3 align-items-center flex-wrap">
+        <Link
+          className="nav-link text-white"
+          to={getHomePath()}
+        >
           Home
         </Link>
 
-        <Link className="nav-link text-white" to="/jobs">
+        <Link
+          className="nav-link text-white"
+          to="/jobs"
+        >
           Jobs
         </Link>
 
         {token && role === "candidate" && (
-          <Link className="nav-link text-white" to="/my-applications">
+          <Link
+            className="nav-link text-white"
+            to="/my-applications"
+          >
             My Applications
           </Link>
         )}
 
         {token && role === "hr" && (
           <>
-            <Link className="nav-link text-white" to="/add-job">
+            <Link
+              className="nav-link text-white"
+              to="/add-job"
+            >
               Add Job
             </Link>
 
-            <Link className="nav-link text-white" to="/hr-applications">
+            <Link
+              className="nav-link text-white"
+              to="/hr-applications"
+            >
               Applications
             </Link>
           </>
         )}
 
+        {token && (
+          <Link
+            className="nav-link text-white"
+            to="/profile"
+          >
+            Profile
+          </Link>
+        )}
+
         {!token ? (
           <>
-            <Link className="nav-link text-white" to="/login">
+            <Link
+              className="nav-link text-white"
+              to="/login"
+            >
               Login
             </Link>
 
-            <Link className="btn btn-outline-light btn-sm" to="/register">
+            <Link
+              className="btn btn-outline-light btn-sm"
+              to="/register"
+            >
               Register
             </Link>
           </>
         ) : (
-          <button className="btn btn-outline-light btn-sm" onClick={handleLogout}>
+          <button
+            className="btn btn-outline-light btn-sm"
+            onClick={handleLogout}
+          >
             Logout
           </button>
         )}

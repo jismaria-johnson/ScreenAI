@@ -1,5 +1,7 @@
-import { Routes, Route } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
+
 import Navbar from "./components/Navbar";
+
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -10,6 +12,8 @@ import AddJob from "./pages/AddJob";
 import ApplyJob from "./pages/ApplyJob";
 import MyApplications from "./pages/MyApplications";
 import HRApplications from "./pages/HRApplications";
+import Profile from "./pages/Profile";
+import EditProfile from "./pages/EditProfile";
 
 function App() {
   return (
@@ -18,15 +22,61 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/candidate-dashboard" element={<CandidateDashboard />} />
-        <Route path="/hr-dashboard" element={<HRDashboard />} />
-        <Route path="/jobs" element={<JobList />} />
-        <Route path="/add-job" element={<AddJob />} />
-        <Route path="/apply/:jobId" element={<ApplyJob />} />
-        <Route path="/my-applications" element={<MyApplications />} />
-        <Route path="/hr-applications" element={<HRApplications />} />
+
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        <Route
+          path="/register"
+          element={<Register />}
+        />
+
+        <Route
+          path="/candidate-dashboard"
+          element={<CandidateDashboard />}
+        />
+
+        <Route
+          path="/hr-dashboard"
+          element={<HRDashboard />}
+        />
+
+        <Route
+          path="/jobs"
+          element={<JobList />}
+        />
+
+        <Route
+          path="/add-job"
+          element={<AddJob />}
+        />
+
+        <Route
+          path="/apply/:jobId"
+          element={<ApplyJob />}
+        />
+
+        <Route
+          path="/my-applications"
+          element={<MyApplications />}
+        />
+
+        <Route
+          path="/hr-applications"
+          element={<HRApplications />}
+        />
+
+        <Route
+          path="/profile"
+          element={<Profile />}
+        />
+
+        <Route
+          path="/edit-profile"
+          element={<EditProfile />}
+        />
       </Routes>
     </>
   );

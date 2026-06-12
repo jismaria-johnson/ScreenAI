@@ -3,6 +3,7 @@ import API from "../api/axiosConfig";
 
 function MyApplications() {
   const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchApplications();
@@ -13,7 +14,9 @@ function MyApplications() {
       const response = await API.get("/applications/my/");
       setApplications(response.data);
     } catch (error) {
-      console.log(error);
+      console.log("Failed to fetch applications:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -21,51 +24,26 @@ function MyApplications() {
     <div className="container py-5">
       <h2 className="mb-4">My Applications</h2>
 
-      {applications.length === 0 ? (
-        <p>No applications submitted yet.</p>
+      {loading ? (
+        <p>Loading applications...</p>
+      ) : applications.length === 0 ? (
+        <div className="alert alert-info">
+          You have not submitted any applications yet.
+        </div>
       ) : (
         <div className="row">
           {applications.map((application) => (
-            <div className="col-md-6 mb-3" key={application.id}>
-              <div className="card shadow-sm p-3">
-                <h5>{application.job_title}</h5>
+            <div className="col-lg-6 mb-4" key={application.id}>
+              <div className="card shadow-sm p-4 h-100">
+                <h4>{application.job_title}</h4>
+
+                <p className="text-muted">{application.company_name}</p>
+
+                <hr />
 
                 <p>
-                  <strong>Company:</strong> {application.company_name}
-                </p>
-
-                <p>
-                  <strong>Status:</strong> {application.application_status}
-                </p>
-
-                <p>
-                  <strong>AI Score:</strong>{" "}
-                  {application.ai_score ?? "Not evaluated yet"}
-                </p>
-
-                <p>
-                  <strong>Recommendation:</strong>{" "}
-                  {application.recommendation}
-                </p>
-
-                <p>
-                  <strong>Matched Skills:</strong>{" "}
-                  {application.matched_skills || "None"}
-                </p>
-
-                <p>
-                  <strong>Missing Skills:</strong>{" "}
-                  {application.missing_skills || "None"}
-                </p>
-
-                <p>
-                  <strong>Experience Match:</strong>{" "}
-                  {application.experience_match || "None"}
-                </p>
-
-                <p>
-                  <strong>AI Feedback:</strong>{" "}
-                  {application.ai_feedback || "Not evaluated yet"}
+                  <strong>Application Status:</strong>{" "}
+                  {application.application_status}
                 </p>
               </div>
             </div>
