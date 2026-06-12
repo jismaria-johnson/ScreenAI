@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
 import API from "../api/axiosConfig";
 
 function HRApplications() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const jobFromUrl = searchParams.get("job") || "";
+
   const [applications, setApplications] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [filters, setFilters] = useState({
-    job: "",
+    job: jobFromUrl,
     min_score: "",
     recommendation: "",
     status: "",
@@ -15,8 +21,19 @@ function HRApplications() {
 
   useEffect(() => {
     fetchJobs();
-    fetchApplications();
   }, []);
+
+  useEffect(() => {
+    const updatedFilters = {
+      job: jobFromUrl,
+      min_score: "",
+      recommendation: "",
+      status: "",
+    };
+
+    setFilters(updatedFilters);
+    fetchApplications(updatedFilters);
+  }, [jobFromUrl]);
 
   const fetchJobs = async () => {
     try {
@@ -49,7 +66,10 @@ function HRApplications() {
         params.status = selectedFilters.status;
       }
 
-      const response = await API.get("/applications/hr/", { params });
+      const response = await API.get("/applications/hr/", {
+        params,
+      });
+
       setApplications(response.data);
     } catch (error) {
       console.log("Failed to fetch HR applications:", error);
@@ -66,6 +86,13 @@ function HRApplications() {
   };
 
   const handleApplyFilters = () => {
+    const updatedParams = {};
+
+    if (filters.job) {
+      updatedParams.job = filters.job;
+    }
+
+    setSearchParams(updatedParams);
     fetchApplications(filters);
   };
 
@@ -78,6 +105,7 @@ function HRApplications() {
     };
 
     setFilters(emptyFilters);
+    setSearchParams({});
     fetchApplications(emptyFilters);
   };
 
@@ -186,7 +214,10 @@ function HRApplications() {
         </div>
 
         <div className="d-flex gap-2">
-          <button className="btn btn-primary" onClick={handleApplyFilters}>
+          <button
+            className="btn btn-primary"
+            onClick={handleApplyFilters}
+          >
             Apply Filters
           </button>
 
@@ -211,7 +242,10 @@ function HRApplications() {
             const resumeUrl = getResumeUrl(application.resume);
 
             return (
-              <div className="col-lg-6 mb-4" key={application.id}>
+              <div
+                className="col-lg-6 mb-4"
+                key={application.id}
+              >
                 <div className="card shadow-sm p-4 h-100">
                   <h4>{application.candidate_username}</h4>
 
@@ -219,7 +253,9 @@ function HRApplications() {
                     {application.job_title}
                   </p>
 
-                  <p className="text-muted">{application.company_name}</p>
+                  <p className="text-muted">
+                    {application.company_name}
+                  </p>
 
                   <hr />
 
@@ -283,10 +319,14 @@ function HRApplications() {
                     <button
                       className="btn btn-success btn-sm"
                       onClick={() =>
-                        updateStatus(application.id, "shortlisted")
+                        updateStatus(
+                          application.id,
+                          "shortlisted"
+                        )
                       }
                       disabled={
-                        application.application_status === "shortlisted"
+                        application.application_status ===
+                        "shortlisted"
                       }
                     >
                       Shortlist
@@ -294,16 +334,32 @@ function HRApplications() {
 
                     <button
                       className="btn btn-danger btn-sm"
-                      onClick={() => updateStatus(application.id, "rejected")}
-                      disabled={application.application_status === "rejected"}
+                      onClick={() =>
+                        updateStatus(
+                          application.id,
+                          "rejected"
+                        )
+                      }
+                      disabled={
+                        application.application_status ===
+                        "rejected"
+                      }
                     >
                       Reject
                     </button>
 
                     <button
                       className="btn btn-secondary btn-sm"
-                      onClick={() => updateStatus(application.id, "pending")}
-                      disabled={application.application_status === "pending"}
+                      onClick={() =>
+                        updateStatus(
+                          application.id,
+                          "pending"
+                        )
+                      }
+                      disabled={
+                        application.application_status ===
+                        "pending"
+                      }
                     >
                       Mark Pending
                     </button>

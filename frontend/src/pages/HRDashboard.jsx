@@ -39,16 +39,16 @@ function HRDashboard() {
   };
 
   const totalJobs = jobs.length;
+
+  const openJobs = jobs.filter(
+    (job) => job.status === "open"
+  ).length;
+
   const totalApplications = applications.length;
 
   const shortlistedApplications = applications.filter(
     (application) =>
       application.application_status === "shortlisted"
-  ).length;
-
-  const rejectedApplications = applications.filter(
-    (application) =>
-      application.application_status === "rejected"
   ).length;
 
   const displayName =
@@ -72,8 +72,23 @@ function HRDashboard() {
         <div className="row mb-4">
           <div className="col-md-3 mb-3">
             <div className="card shadow-sm p-4 text-center h-100">
-              <h3 className="fw-bold">{totalJobs}</h3>
-              <p className="mb-0">Total Jobs</p>
+              <h3 className="fw-bold">
+                {totalJobs}
+              </h3>
+              <p className="mb-0">
+                Total Jobs
+              </p>
+            </div>
+          </div>
+
+          <div className="col-md-3 mb-3">
+            <div className="card shadow-sm p-4 text-center h-100">
+              <h3 className="fw-bold">
+                {openJobs}
+              </h3>
+              <p className="mb-0">
+                Open Jobs
+              </p>
             </div>
           </div>
 
@@ -93,31 +108,27 @@ function HRDashboard() {
               <h3 className="fw-bold">
                 {shortlistedApplications}
               </h3>
-              <p className="mb-0">Shortlisted</p>
-            </div>
-          </div>
-
-          <div className="col-md-3 mb-3">
-            <div className="card shadow-sm p-4 text-center h-100">
-              <h3 className="fw-bold">
-                {rejectedApplications}
-              </h3>
-              <p className="mb-0">Rejected</p>
+              <p className="mb-0">
+                Shortlisted
+              </p>
             </div>
           </div>
         </div>
       )}
 
       <div className="d-flex gap-3 flex-wrap">
-        <Link to="/add-job" className="btn btn-primary">
+        <Link
+          to="/add-job"
+          className="btn btn-primary"
+        >
           Add Job
         </Link>
 
         <Link
-          to="/jobs"
+          to="/my-jobs"
           className="btn btn-outline-primary"
         >
-          View My Jobs
+          Manage My Jobs
         </Link>
 
         <Link

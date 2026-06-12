@@ -40,24 +40,33 @@ function Navbar() {
           Home
         </Link>
 
-        <Link
-          className="nav-link text-white"
-          to="/jobs"
-        >
-          Jobs
-        </Link>
-
         {token && role === "candidate" && (
-          <Link
-            className="nav-link text-white"
-            to="/my-applications"
-          >
-            My Applications
-          </Link>
+          <>
+            <Link
+              className="nav-link text-white"
+              to="/jobs"
+            >
+              Jobs
+            </Link>
+
+            <Link
+              className="nav-link text-white"
+              to="/my-applications"
+            >
+              My Applications
+            </Link>
+          </>
         )}
 
         {token && role === "hr" && (
           <>
+            <Link
+              className="nav-link text-white"
+              to="/my-jobs"
+            >
+              My Jobs
+            </Link>
+
             <Link
               className="nav-link text-white"
               to="/add-job"
@@ -72,6 +81,15 @@ function Navbar() {
               Applications
             </Link>
           </>
+        )}
+
+        {!token && (
+          <Link
+            className="nav-link text-white"
+            to="/jobs"
+          >
+            Jobs
+          </Link>
         )}
 
         {token && (

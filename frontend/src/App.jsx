@@ -9,6 +9,8 @@ import CandidateDashboard from "./pages/CandidateDashboard";
 import HRDashboard from "./pages/HRDashboard";
 import JobList from "./pages/JobList";
 import AddJob from "./pages/AddJob";
+import EditJob from "./pages/EditJob";
+import MyJobs from "./pages/MyJobs";
 import ApplyJob from "./pages/ApplyJob";
 import MyApplications from "./pages/MyApplications";
 import HRApplications from "./pages/HRApplications";
@@ -49,8 +51,18 @@ function App() {
         />
 
         <Route
+          path="/my-jobs"
+          element={<MyJobs />}
+        />
+
+        <Route
           path="/add-job"
           element={<AddJob />}
+        />
+
+        <Route
+          path="/edit-job/:jobId"
+          element={<EditJob />}
         />
 
         <Route
