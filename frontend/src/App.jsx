@@ -1,21 +1,25 @@
-import { Route, Routes } from "react-router-dom";
+import {
+  Route,
+  Routes,
+} from "react-router-dom";
 
 import Navbar from "./components/Navbar";
+import ProtectedRoute from "./components/ProtectedRoute";
 
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
+import AddJob from "./pages/AddJob";
+import ApplyJob from "./pages/ApplyJob";
 import CandidateDashboard from "./pages/CandidateDashboard";
+import EditJob from "./pages/EditJob";
+import EditProfile from "./pages/EditProfile";
+import Home from "./pages/Home";
+import HRApplications from "./pages/HRApplications";
 import HRDashboard from "./pages/HRDashboard";
 import JobList from "./pages/JobList";
-import AddJob from "./pages/AddJob";
-import EditJob from "./pages/EditJob";
-import MyJobs from "./pages/MyJobs";
-import ApplyJob from "./pages/ApplyJob";
+import Login from "./pages/Login";
 import MyApplications from "./pages/MyApplications";
-import HRApplications from "./pages/HRApplications";
+import MyJobs from "./pages/MyJobs";
 import Profile from "./pages/Profile";
-import EditProfile from "./pages/EditProfile";
+import Register from "./pages/Register";
 
 function App() {
   return (
@@ -23,7 +27,10 @@ function App() {
       <Navbar />
 
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route
+          path="/"
+          element={<Home />}
+        />
 
         <Route
           path="/login"
@@ -36,58 +43,141 @@ function App() {
         />
 
         <Route
-          path="/candidate-dashboard"
-          element={<CandidateDashboard />}
-        />
-
-        <Route
-          path="/hr-dashboard"
-          element={<HRDashboard />}
-        />
-
-        <Route
           path="/jobs"
           element={<JobList />}
         />
 
         <Route
-          path="/my-jobs"
-          element={<MyJobs />}
-        />
-
-        <Route
-          path="/add-job"
-          element={<AddJob />}
-        />
-
-        <Route
-          path="/edit-job/:jobId"
-          element={<EditJob />}
-        />
-
-        <Route
-          path="/apply/:jobId"
-          element={<ApplyJob />}
+          path="/candidate-dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "candidate",
+              ]}
+            >
+              <CandidateDashboard />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/my-applications"
-          element={<MyApplications />}
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "candidate",
+              ]}
+            >
+              <MyApplications />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/apply/:jobId"
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "candidate",
+              ]}
+            >
+              <ApplyJob />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/hr-dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr"]}
+            >
+              <HRDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/my-jobs"
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr"]}
+            >
+              <MyJobs />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/add-job"
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr"]}
+            >
+              <AddJob />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/edit-job/:jobId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr"]}
+            >
+              <EditJob />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/hr-applications"
-          element={<HRApplications />}
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr"]}
+            >
+              <HRApplications />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/profile"
-          element={<Profile />}
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "candidate",
+                "hr",
+              ]}
+            >
+              <Profile />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/edit-profile"
-          element={<EditProfile />}
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "candidate",
+                "hr",
+              ]}
+            >
+              <EditProfile />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="*"
+          element={
+            <div className="container py-5">
+              <div className="alert alert-warning">
+                Page not found.
+              </div>
+            </div>
+          }
         />
       </Routes>
     </>

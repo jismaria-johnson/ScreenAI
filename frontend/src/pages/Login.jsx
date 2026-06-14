@@ -1,77 +1,199 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 
 import API from "../api/axiosConfig";
 
+import {
+  getDashboardPath,
+  isLoggedIn,
+  saveAuthData,
+} from "../utils/auth";
+
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [formData, setFormData] = useState({
-    username: "",
-    password: "",
-  });
+  const [searchParams] =
+    useSearchParams();
 
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] =
+    useState({
+      username: "",
+      password: "",
+    });
+
+  const [error, setError] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("access");
-    const role = localStorage.getItem("role");
+    if (isLoggedIn()) {
+      navigate(
+        getDashboardPath(),
+        {
+          replace: true,
+        }
+      );
 
-    if (token && role === "hr") {
-      navigate("/hr-dashboard", { replace: true });
-    } else if (token && role === "candidate") {
-      navigate("/candidate-dashboard", { replace: true });
+      return;
     }
-  }, [navigate]);
+
+    if (
+      searchParams.get("session") ===
+      "expired"
+    ) {
+      setMessage(
+        "Your session expired. Please log in again."
+      );
+    }
+  }, [
+    navigate,
+    searchParams,
+  ]);
 
   const handleChange = (event) => {
-    setFormData({
-      ...formData,
-      [event.target.name]: event.target.value,
-    });
+    const {
+      name,
+      value,
+    } = event.target;
+
+    setError("");
+
+    setFormData(
+      (previousData) => ({
+        ...previousData,
+        [name]: value,
+      })
+    );
   };
 
-  const handleSubmit = async (event) => {
+  const getLoginError = (
+    requestError
+  ) => {
+    const responseData =
+      requestError.response?.data;
+
+    if (!requestError.response) {
+      return (
+        "Could not connect to the backend server."
+      );
+    }
+
+    if (
+      responseData?.detail
+    ) {
+      return responseData.detail;
+    }
+
+    return (
+      "Invalid username or password."
+    );
+  };
+
+  const handleSubmit = async (
+    event
+  ) => {
     event.preventDefault();
 
     setError("");
+    setMessage("");
     setLoading(true);
 
     try {
-      const loginResponse = await API.post(
-        "/accounts/login/",
-        formData
-      );
+      const loginResponse =
+        await API.post(
+          "/accounts/login/",
+          formData
+        );
+
+      const access =
+        loginResponse.data.access;
+
+      const refresh =
+        loginResponse.data.refresh;
 
       localStorage.setItem(
         "access",
-        loginResponse.data.access
+        access
       );
 
       localStorage.setItem(
         "refresh",
-        loginResponse.data.refresh
+        refresh
       );
 
-      const profileResponse = await API.get(
-        "/accounts/profile/"
-      );
+      const profileResponse =
+        await API.get(
+          "/accounts/profile/"
+        );
 
-      const role = profileResponse.data.role;
+      const role =
+        profileResponse.data.role;
 
-      localStorage.setItem("role", role);
+      saveAuthData({
+        access,
+        refresh,
+        role,
+      });
 
-      if (role === "hr") {
-        navigate("/hr-dashboard", { replace: true });
-      } else {
-        navigate("/candidate-dashboard", {
-          replace: true,
-        });
+      const requestedPath =
+        location.state?.from;
+
+      if (requestedPath) {
+        navigate(
+          requestedPath,
+          {
+            replace: true,
+          }
+        );
+
+        return;
       }
-    } catch (err) {
-      console.log("Login failed:", err);
-      setError("Invalid username or password.");
+
+      navigate(
+        role === "hr"
+          ? "/hr-dashboard"
+          : "/candidate-dashboard",
+        {
+          replace: true,
+        }
+      );
+    } catch (requestError) {
+      console.error(
+        "Login failed:",
+        requestError
+      );
+
+      localStorage.removeItem(
+        "access"
+      );
+
+      localStorage.removeItem(
+        "refresh"
+      );
+
+      localStorage.removeItem(
+        "role"
+      );
+
+      setError(
+        getLoginError(
+          requestError
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -81,7 +203,15 @@ function Login() {
     <div className="container py-5">
       <div className="row justify-content-center">
         <div className="col-md-6 col-lg-5">
-          <h2 className="mb-4">Login</h2>
+          <h2 className="mb-4">
+            Login
+          </h2>
+
+          {message && (
+            <div className="alert alert-info">
+              {message}
+            </div>
+          )}
 
           {error && (
             <div className="alert alert-danger">
@@ -94,32 +224,52 @@ function Login() {
             className="card p-4 shadow-sm"
           >
             <div className="mb-3">
-              <label className="form-label">
+              <label
+                htmlFor="username"
+                className="form-label"
+              >
                 Username
               </label>
 
               <input
+                id="username"
                 type="text"
                 name="username"
                 className="form-control"
-                value={formData.username}
-                onChange={handleChange}
+                value={
+                  formData.username
+                }
+                onChange={
+                  handleChange
+                }
+                autoComplete="username"
                 required
+                disabled={loading}
               />
             </div>
 
             <div className="mb-3">
-              <label className="form-label">
+              <label
+                htmlFor="password"
+                className="form-label"
+              >
                 Password
               </label>
 
               <input
+                id="password"
                 type="password"
                 name="password"
                 className="form-control"
-                value={formData.password}
-                onChange={handleChange}
+                value={
+                  formData.password
+                }
+                onChange={
+                  handleChange
+                }
+                autoComplete="current-password"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -128,7 +278,9 @@ function Login() {
               className="btn btn-primary"
               disabled={loading}
             >
-              {loading ? "Logging in..." : "Login"}
+              {loading
+                ? "Logging in..."
+                : "Login"}
             </button>
           </form>
         </div>

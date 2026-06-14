@@ -1,33 +1,40 @@
-import { Link, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+} from "react-router-dom";
+
+import {
+  clearAuthData,
+  getAccessToken,
+  getDashboardPath,
+  getUserRole,
+} from "../utils/auth";
 
 function Navbar() {
   const navigate = useNavigate();
 
-  const token = localStorage.getItem("access");
-  const role = localStorage.getItem("role");
+  const token =
+    getAccessToken();
 
-  const getHomePath = () => {
-    if (token && role === "candidate") {
-      return "/candidate-dashboard";
-    }
+  const role =
+    getUserRole();
 
-    if (token && role === "hr") {
-      return "/hr-dashboard";
-    }
-
-    return "/";
-  };
+  const homePath =
+    getDashboardPath();
 
   const handleLogout = () => {
-    localStorage.clear();
-    navigate("/");
+    clearAuthData();
+
+    navigate("/", {
+      replace: true,
+    });
   };
 
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
       <Link
         className="navbar-brand fw-bold"
-        to={getHomePath()}
+        to={homePath}
       >
         ScreenAI
       </Link>
@@ -35,53 +42,55 @@ function Navbar() {
       <div className="ms-auto d-flex gap-3 align-items-center flex-wrap">
         <Link
           className="nav-link text-white"
-          to={getHomePath()}
+          to={homePath}
         >
           Home
         </Link>
 
-        {token && role === "candidate" && (
-          <>
-            <Link
-              className="nav-link text-white"
-              to="/jobs"
-            >
-              Jobs
-            </Link>
+        {token &&
+          role === "candidate" && (
+            <>
+              <Link
+                className="nav-link text-white"
+                to="/jobs"
+              >
+                Jobs
+              </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/my-applications"
-            >
-              My Applications
-            </Link>
-          </>
-        )}
+              <Link
+                className="nav-link text-white"
+                to="/my-applications"
+              >
+                My Applications
+              </Link>
+            </>
+          )}
 
-        {token && role === "hr" && (
-          <>
-            <Link
-              className="nav-link text-white"
-              to="/my-jobs"
-            >
-              My Jobs
-            </Link>
+        {token &&
+          role === "hr" && (
+            <>
+              <Link
+                className="nav-link text-white"
+                to="/my-jobs"
+              >
+                My Jobs
+              </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/add-job"
-            >
-              Add Job
-            </Link>
+              <Link
+                className="nav-link text-white"
+                to="/add-job"
+              >
+                Add Job
+              </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/hr-applications"
-            >
-              Applications
-            </Link>
-          </>
-        )}
+              <Link
+                className="nav-link text-white"
+                to="/hr-applications"
+              >
+                Applications
+              </Link>
+            </>
+          )}
 
         {!token && (
           <Link
@@ -119,6 +128,7 @@ function Navbar() {
           </>
         ) : (
           <button
+            type="button"
             className="btn btn-outline-light btn-sm"
             onClick={handleLogout}
           >
