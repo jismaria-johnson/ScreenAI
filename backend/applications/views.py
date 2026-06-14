@@ -1,10 +1,14 @@
 from rest_framework import generics
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import (
+    ValidationError,
+)
 from rest_framework.parsers import (
     FormParser,
     MultiPartParser,
 )
-from rest_framework.response import Response
+from rest_framework.response import (
+    Response,
+)
 from rest_framework.views import APIView
 
 from ai_engine.gemini_scorer import (
@@ -26,13 +30,15 @@ from .serializers import (
 )
 
 
-class ApplyJobView(generics.CreateAPIView):
+class ApplyJobView(
+    generics.CreateAPIView
+):
     serializer_class = (
         ApplicationCreateSerializer
     )
 
     permission_classes = [
-        IsCandidateUser
+        IsCandidateUser,
     ]
 
     parser_classes = [
@@ -40,10 +46,23 @@ class ApplyJobView(generics.CreateAPIView):
         FormParser,
     ]
 
-    def perform_create(self, serializer):
-        job = serializer.validated_data.get(
+    def perform_create(
+        self,
+        serializer,
+    ):
+        job = serializer.validated_data[
             "job"
-        )
+        ]
+
+        if job.status != "open":
+            raise ValidationError(
+                {
+                    "job": (
+                        "This job is no longer "
+                        "accepting applications."
+                    )
+                }
+            )
 
         already_applied = (
             Application.objects.filter(
@@ -54,76 +73,34 @@ class ApplyJobView(generics.CreateAPIView):
 
         if already_applied:
             raise ValidationError(
-                "You have already applied "
-                "for this job."
+                {
+                    "detail": (
+                        "You have already applied "
+                        "for this job."
+                    )
+                }
             )
 
         application = serializer.save(
             candidate=self.request.user
         )
 
-        resume_path = application.resume.path
-
-        extracted_text = extract_text_from_pdf(
-            resume_path
+        extracted_text = (
+            extract_text_from_pdf(
+                application.resume.path
+            )
         )
 
         application.extracted_resume_text = (
             extracted_text
         )
 
-        if extracted_text:
-            ai_result = (
-                score_resume_with_gemini(
-                    extracted_text,
-                    job,
-                )
-            )
+        if not extracted_text:
+            application.ai_score = None
 
-            application.ai_score = (
-                ai_result["ai_score"]
-            )
+            application.matched_skills = ""
 
-            application.matched_skills = (
-                ai_result["matched_skills"]
-            )
-
-            application.missing_skills = (
-                ai_result["missing_skills"]
-            )
-
-            application.experience_match = (
-                ai_result["experience_match"]
-            )
-
-            application.total_experience_years = (
-                ai_result[
-                    "total_experience_years"
-                ]
-            )
-
-            application.worked_companies = (
-                ai_result[
-                    "worked_companies"
-                ]
-            )
-
-            application.experience_summary = (
-                ai_result[
-                    "experience_summary"
-                ]
-            )
-
-            application.ai_feedback = (
-                ai_result["ai_feedback"]
-            )
-
-            application.recommendation = (
-                ai_result["recommendation"]
-            )
-
-        else:
-            application.ai_score = 0
+            application.missing_skills = ""
 
             application.experience_match = (
                 "Resume text could not "
@@ -131,22 +108,77 @@ class ApplyJobView(generics.CreateAPIView):
             )
 
             application.total_experience_years = (
-                0.0
+                None
             )
 
             application.worked_companies = ""
 
             application.experience_summary = (
-                "Experience details could not "
-                "be extracted."
+                "The resume could not be read. "
+                "Please review it manually."
             )
 
             application.ai_feedback = (
-                "Could not read resume. "
-                "Please review manually."
+                "AI evaluation was not completed "
+                "because resume text extraction failed."
             )
 
-            application.recommendation = "review"
+            application.recommendation = (
+                "not_evaluated"
+            )
+
+            application.save()
+
+            return
+
+        ai_result = (
+            score_resume_with_gemini(
+                extracted_text,
+                job,
+            )
+        )
+
+        application.ai_score = (
+            ai_result["ai_score"]
+        )
+
+        application.matched_skills = (
+            ai_result["matched_skills"]
+        )
+
+        application.missing_skills = (
+            ai_result["missing_skills"]
+        )
+
+        application.experience_match = (
+            ai_result["experience_match"]
+        )
+
+        application.total_experience_years = (
+            ai_result[
+                "total_experience_years"
+            ]
+        )
+
+        application.worked_companies = (
+            ai_result[
+                "worked_companies"
+            ]
+        )
+
+        application.experience_summary = (
+            ai_result[
+                "experience_summary"
+            ]
+        )
+
+        application.ai_feedback = (
+            ai_result["ai_feedback"]
+        )
+
+        application.recommendation = (
+            ai_result["recommendation"]
+        )
 
         application.save()
 
@@ -159,7 +191,7 @@ class MyApplicationsView(
     )
 
     permission_classes = [
-        IsCandidateUser
+        IsCandidateUser,
     ]
 
     def get_queryset(self):
@@ -171,7 +203,9 @@ class MyApplicationsView(
                 "job",
                 "candidate",
             )
-            .order_by("-submitted_at")
+            .order_by(
+                "-submitted_at"
+            )
         )
 
 
@@ -183,20 +217,24 @@ class HRApplicationsView(
     )
 
     permission_classes = [
-        IsHRUser
+        IsHRUser,
     ]
 
     def get_queryset(self):
         applications = (
             Application.objects.filter(
-                job__hr_user=self.request.user
+                job__hr_user=(
+                    self.request.user
+                )
             )
             .select_related(
                 "job",
                 "candidate",
                 "candidate__profile",
             )
-            .order_by("-submitted_at")
+            .order_by(
+                "-submitted_at"
+            )
         )
 
         job_id = (
@@ -244,12 +282,11 @@ class HRApplicationsView(
 
         if min_score:
             try:
-                score_value = int(min_score)
+                score_value = int(
+                    min_score
+                )
 
-                if (
-                    score_value < 0
-                    or score_value > 100
-                ):
+                if not 0 <= score_value <= 100:
                     raise ValidationError(
                         "Minimum AI score must "
                         "be between 0 and 100."
@@ -257,7 +294,9 @@ class HRApplicationsView(
 
                 applications = (
                     applications.filter(
-                        ai_score__gte=score_value
+                        ai_score__gte=(
+                            score_value
+                        )
                     )
                 )
 
@@ -268,10 +307,23 @@ class HRApplicationsView(
                 )
 
         if experience_filter:
-            if experience_filter == "fresher":
+            if (
+                experience_filter
+                == "fresher"
+            ):
                 applications = (
                     applications.filter(
                         total_experience_years=0
+                    )
+                )
+
+            elif (
+                experience_filter
+                == "not_evaluated"
+            ):
+                applications = (
+                    applications.filter(
+                        total_experience_years__isnull=True
                     )
                 )
 
@@ -327,7 +379,9 @@ class HRApplicationsView(
 
             applications = (
                 applications.filter(
-                    recommendation=recommendation
+                    recommendation=(
+                        recommendation
+                    )
                 )
             )
 
@@ -338,7 +392,10 @@ class HRApplicationsView(
                 "rejected",
             ]
 
-            if status not in allowed_statuses:
+            if (
+                status
+                not in allowed_statuses
+            ):
                 raise ValidationError(
                     "Invalid application status."
                 )
@@ -352,15 +409,25 @@ class HRApplicationsView(
         return applications
 
 
-class UpdateApplicationStatusView(APIView):
-    permission_classes = [IsHRUser]
+class UpdateApplicationStatusView(
+    APIView
+):
+    permission_classes = [
+        IsHRUser,
+    ]
 
-    def patch(self, request, pk):
+    def patch(
+        self,
+        request,
+        pk,
+    ):
         try:
             application = (
                 Application.objects.get(
                     pk=pk,
-                    job__hr_user=request.user,
+                    job__hr_user=(
+                        request.user
+                    ),
                 )
             )
 
@@ -379,7 +446,10 @@ class UpdateApplicationStatusView(APIView):
             "rejected",
         ]
 
-        if new_status not in allowed_statuses:
+        if (
+            new_status
+            not in allowed_statuses
+        ):
             raise ValidationError(
                 "Invalid application status."
             )
@@ -390,12 +460,16 @@ class UpdateApplicationStatusView(APIView):
 
         application.save(
             update_fields=[
-                "application_status"
+                "application_status",
             ]
         )
 
-        serializer = HRApplicationSerializer(
-            application
+        serializer = (
+            HRApplicationSerializer(
+                application
+            )
         )
 
-        return Response(serializer.data)
+        return Response(
+            serializer.data
+        )

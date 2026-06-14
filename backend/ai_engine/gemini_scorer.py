@@ -1,7 +1,11 @@
 import json
+import logging
 
 import google.generativeai as genai
 from django.conf import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_experience_years(value):
@@ -17,6 +21,13 @@ def parse_experience_years(value):
         return 0.0
 
 
+def clean_text_value(value):
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
 def format_worked_companies(value):
     if isinstance(value, list):
         cleaned_companies = [
@@ -27,14 +38,23 @@ def format_worked_companies(value):
 
         unique_companies = []
 
-        for company in cleaned_companies:
-            if company.lower() not in [
-                existing.lower()
-                for existing in unique_companies
-            ]:
-                unique_companies.append(company)
+        existing_names = set()
 
-        return ", ".join(unique_companies)
+        for company in cleaned_companies:
+            normalised_name = company.lower()
+
+            if normalised_name not in existing_names:
+                unique_companies.append(
+                    company
+                )
+
+                existing_names.add(
+                    normalised_name
+                )
+
+        return ", ".join(
+            unique_companies
+        )
 
     if isinstance(value, str):
         return value.strip()
@@ -42,13 +62,50 @@ def format_worked_companies(value):
     return ""
 
 
-def score_resume_with_gemini(resume_text, job):
+def get_not_evaluated_result(message):
+    return {
+        "ai_score": None,
+        "matched_skills": "",
+        "missing_skills": "",
+        "experience_match": (
+            "AI evaluation was not completed."
+        ),
+        "total_experience_years": None,
+        "worked_companies": "",
+        "experience_summary": message,
+        "ai_feedback": message,
+        "recommendation": (
+            "not_evaluated"
+        ),
+    }
+
+
+def score_resume_with_gemini(
+    resume_text,
+    job,
+):
+    if not settings.GEMINI_API_KEY:
+        logger.error(
+            "GEMINI_API_KEY is not configured."
+        )
+
+        return get_not_evaluated_result(
+            "AI evaluation is unavailable because "
+            "the Gemini API key is not configured."
+        )
+
+    model_name = getattr(
+        settings,
+        "GEMINI_MODEL",
+        "gemini-2.5-flash-lite",
+    )
+
     genai.configure(
         api_key=settings.GEMINI_API_KEY
     )
 
     model = genai.GenerativeModel(
-        "gemini-2.5-flash-lite"
+        model_name
     )
 
     prompt = f"""
@@ -111,38 +168,56 @@ Rules:
 """
 
     try:
-        response = model.generate_content(prompt)
-
-        result_text = response.text.strip()
+        response = model.generate_content(
+            prompt
+        )
 
         result_text = (
-            result_text
+            response.text
+            .strip()
             .replace("```json", "")
             .replace("```", "")
             .strip()
         )
 
-        result = json.loads(result_text)
+        result = json.loads(
+            result_text
+        )
 
         ai_score = int(
-            result.get("ai_score", 0)
+            result.get(
+                "ai_score",
+                0,
+            )
         )
 
         ai_score = max(
             0,
-            min(ai_score, 100),
+            min(
+                ai_score,
+                100,
+            ),
         )
 
-        recommendation = result.get(
-            "recommendation",
-            "review",
+        recommendation = (
+            clean_text_value(
+                result.get(
+                    "recommendation",
+                    "review",
+                )
+            ).lower()
         )
 
-        if recommendation not in [
+        allowed_recommendations = [
             "shortlist",
             "review",
             "reject",
-        ]:
+        ]
+
+        if (
+            recommendation
+            not in allowed_recommendations
+        ):
             recommendation = "review"
 
         total_experience_years = (
@@ -163,13 +238,20 @@ Rules:
             )
         )
 
-        experience_summary = result.get(
-            "experience_summary",
-            "",
+        experience_summary = (
+            clean_text_value(
+                result.get(
+                    "experience_summary",
+                    "",
+                )
+            )
         )
 
         if not experience_summary:
-            if total_experience_years == 0:
+            if (
+                total_experience_years
+                == 0
+            ):
                 experience_summary = (
                     "No previous company "
                     "experience found."
@@ -182,17 +264,29 @@ Rules:
 
         return {
             "ai_score": ai_score,
-            "matched_skills": result.get(
-                "matched_skills",
-                "",
+            "matched_skills": (
+                clean_text_value(
+                    result.get(
+                        "matched_skills",
+                        "",
+                    )
+                )
             ),
-            "missing_skills": result.get(
-                "missing_skills",
-                "",
+            "missing_skills": (
+                clean_text_value(
+                    result.get(
+                        "missing_skills",
+                        "",
+                    )
+                )
             ),
-            "experience_match": result.get(
-                "experience_match",
-                "",
+            "experience_match": (
+                clean_text_value(
+                    result.get(
+                        "experience_match",
+                        "",
+                    )
+                )
             ),
             "total_experience_years": (
                 total_experience_years
@@ -203,35 +297,37 @@ Rules:
             "experience_summary": (
                 experience_summary
             ),
-            "ai_feedback": result.get(
-                "ai_feedback",
-                "",
+            "ai_feedback": (
+                clean_text_value(
+                    result.get(
+                        "ai_feedback",
+                        "",
+                    )
+                )
             ),
-            "recommendation": recommendation,
+            "recommendation": (
+                recommendation
+            ),
         }
 
-    except Exception as error:
-        print(
-            "Gemini scoring error:",
+    except json.JSONDecodeError as error:
+        logger.exception(
+            "Gemini returned invalid JSON: %s",
             error,
         )
 
-        return {
-            "ai_score": 0,
-            "matched_skills": "",
-            "missing_skills": "",
-            "experience_match": (
-                "Could not evaluate experience."
-            ),
-            "total_experience_years": 0.0,
-            "worked_companies": "",
-            "experience_summary": (
-                "Experience details could not "
-                "be evaluated."
-            ),
-            "ai_feedback": (
-                "AI scoring failed. "
-                "Please review manually."
-            ),
-            "recommendation": "review",
-        }
+        return get_not_evaluated_result(
+            "Gemini returned an invalid response. "
+            "Please review this application manually."
+        )
+
+    except Exception as error:
+        logger.exception(
+            "Gemini scoring failed: %s",
+            error,
+        )
+
+        return get_not_evaluated_result(
+            "AI scoring failed. "
+            "Please review this application manually."
+        )
