@@ -5,158 +5,251 @@ from .models import Profile
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(
+        write_only=True,
+        min_length=6,
+        style={"input_type": "password"},
+    )
+
+    confirm_password = serializers.CharField(
+        write_only=True,
+        style={"input_type": "password"},
+    )
+
     role = serializers.ChoiceField(
         choices=Profile.ROLE_CHOICES,
-        write_only=True
+        write_only=True,
     )
+
     phone = serializers.CharField(
         required=False,
         allow_blank=True,
-        write_only=True
+        write_only=True,
     )
+
     education = serializers.CharField(
         required=False,
         allow_blank=True,
-        write_only=True
-    )
-    skills = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True
-    )
-    experience = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True
+        write_only=True,
     )
 
     class Meta:
         model = User
         fields = [
-            "id",
             "username",
-            "email",
-            "password",
             "first_name",
             "last_name",
+            "email",
+            "password",
+            "confirm_password",
             "role",
             "phone",
             "education",
-            "skills",
-            "experience",
         ]
+
+    def validate_username(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Username is required."
+            )
+
+        if User.objects.filter(
+            username__iexact=value
+        ).exists():
+            raise serializers.ValidationError(
+                "A user with this username already exists."
+            )
+
+        return value
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Email is required."
+            )
+
+        if User.objects.filter(
+            email__iexact=value
+        ).exists():
+            raise serializers.ValidationError(
+                "A user with this email already exists."
+            )
+
+        return value
+
+    def validate(self, attrs):
+        password = attrs.get("password")
+        confirm_password = attrs.pop(
+            "confirm_password",
+            None,
+        )
+
+        if password != confirm_password:
+            raise serializers.ValidationError(
+                {
+                    "confirm_password": (
+                        "Passwords do not match."
+                    )
+                }
+            )
+
+        role = attrs.get("role")
+
+        if role == "candidate":
+            phone = attrs.get("phone", "").strip()
+
+            if not phone:
+                raise serializers.ValidationError(
+                    {
+                        "phone": (
+                            "Phone number is required "
+                            "for candidates."
+                        )
+                    }
+                )
+
+        return attrs
 
     def create(self, validated_data):
         role = validated_data.pop("role")
-        phone = validated_data.pop("phone", "")
-        education = validated_data.pop("education", "")
-        skills = validated_data.pop("skills", "")
-        experience = validated_data.pop("experience", "")
+
+        phone = validated_data.pop(
+            "phone",
+            "",
+        ).strip()
+
+        education = validated_data.pop(
+            "education",
+            "",
+        ).strip()
+
         password = validated_data.pop("password")
 
         user = User.objects.create_user(
-            username=validated_data.get("username"),
-            email=validated_data.get("email", ""),
             password=password,
-            first_name=validated_data.get("first_name", ""),
-            last_name=validated_data.get("last_name", ""),
+            **validated_data,
         )
 
-        Profile.objects.create(
-            user=user,
-            role=role,
-            phone=phone,
-            education=education,
-            skills=skills,
-            experience=experience,
+        profile, _ = Profile.objects.get_or_create(
+            user=user
         )
+
+        profile.role = role
+        profile.phone = phone
+        profile.education = education
+
+        # These fields remain empty because skills and
+        # experience are extracted from uploaded resumes.
+        profile.skills = ""
+        profile.experience = ""
+
+        profile.save()
 
         return user
-
-    def to_representation(self, instance):
-        profile = instance.profile
-
-        return {
-            "id": instance.id,
-            "username": instance.username,
-            "email": instance.email,
-            "first_name": instance.first_name,
-            "last_name": instance.last_name,
-            "role": profile.role,
-            "phone": profile.phone,
-            "education": profile.education,
-            "skills": profile.skills,
-            "experience": profile.experience,
-        }
 
 
 class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
         source="user.username",
-        read_only=True
+        read_only=True,
     )
-    email = serializers.EmailField(
-        source="user.email",
-        required=False
-    )
+
     first_name = serializers.CharField(
         source="user.first_name",
         required=False,
-        allow_blank=True
+        allow_blank=True,
     )
+
     last_name = serializers.CharField(
         source="user.last_name",
         required=False,
-        allow_blank=True
+        allow_blank=True,
+    )
+
+    email = serializers.EmailField(
+        source="user.email",
+        required=False,
+    )
+
+    role = serializers.CharField(
+        read_only=True,
     )
 
     class Meta:
         model = Profile
         fields = [
             "username",
-            "email",
             "first_name",
             "last_name",
+            "email",
             "role",
             "phone",
             "education",
-            "skills",
-            "experience",
         ]
-        read_only_fields = ["role"]
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+
+        current_user = self.instance.user
+
+        email_exists = (
+            User.objects.filter(
+                email__iexact=value
+            )
+            .exclude(id=current_user.id)
+            .exists()
+        )
+
+        if email_exists:
+            raise serializers.ValidationError(
+                "A user with this email already exists."
+            )
+
+        return value
+
+    def validate_phone(self, value):
+        return value.strip()
+
+    def validate_education(self, value):
+        return value.strip()
 
     def update(self, instance, validated_data):
-        user_data = validated_data.pop("user", {})
+        user_data = validated_data.pop(
+            "user",
+            {},
+        )
 
         user = instance.user
 
-        if "email" in user_data:
-            user.email = user_data["email"]
-
         if "first_name" in user_data:
-            user.first_name = user_data["first_name"]
+            user.first_name = user_data[
+                "first_name"
+            ].strip()
 
         if "last_name" in user_data:
-            user.last_name = user_data["last_name"]
+            user.last_name = user_data[
+                "last_name"
+            ].strip()
+
+        if "email" in user_data:
+            user.email = user_data[
+                "email"
+            ].strip().lower()
 
         user.save()
 
         instance.phone = validated_data.get(
             "phone",
-            instance.phone
+            instance.phone,
         )
+
         instance.education = validated_data.get(
             "education",
-            instance.education
-        )
-        instance.skills = validated_data.get(
-            "skills",
-            instance.skills
-        )
-        instance.experience = validated_data.get(
-            "experience",
-            instance.experience
+            instance.education,
         )
 
         instance.save()

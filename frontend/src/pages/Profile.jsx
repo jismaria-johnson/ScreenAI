@@ -1,31 +1,81 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  Link,
+} from "react-router-dom";
 
 import API from "../api/axiosConfig";
 
 function Profile() {
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [profile, setProfile] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     fetchProfile();
   }, []);
 
   const fetchProfile = async () => {
+    setLoading(true);
+    setError("");
+
     try {
-      const response = await API.get("/accounts/profile/");
+      const response = await API.get(
+        "/accounts/profile/"
+      );
+
       setProfile(response.data);
-    } catch (err) {
-      console.log("Failed to fetch profile:", err);
-      setError("Could not load profile details.");
+    } catch (requestError) {
+      console.error(
+        "Failed to load profile:",
+        requestError
+      );
+
+      setError(
+        requestError.response?.data?.detail ||
+          "Failed to load profile."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const displayValue = (value) => {
-    return value && value.trim() ? value : "Not provided";
+  const displayValue = (
+    value,
+    fallback = "Not provided"
+  ) => {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return fallback;
+    }
+
+    return value;
+  };
+
+  const getFullName = () => {
+    if (!profile) {
+      return "";
+    }
+
+    const fullName = [
+      profile.first_name,
+      profile.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return fullName || profile.username;
   };
 
   if (loading) {
@@ -39,89 +89,118 @@ function Profile() {
   if (error) {
     return (
       <div className="container py-5">
-        <div className="alert alert-danger">{error}</div>
+        <div className="alert alert-danger">
+          {error}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="container py-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h2 className="mb-1">My Profile</h2>
-          <p className="text-muted mb-0">
-            View your account and profile information.
-          </p>
-        </div>
+      <div className="row justify-content-center">
+        <div className="col-lg-8">
+          <div className="card shadow-sm">
+            <div className="card-body p-4">
+              <div className="d-flex justify-content-between align-items-start mb-4">
+                <div>
+                  <h2 className="mb-1">
+                    {getFullName()}
+                  </h2>
 
-        <Link to="/edit-profile" className="btn btn-primary">
-          Edit Profile
-        </Link>
-      </div>
+                  <p className="text-muted text-capitalize mb-0">
+                    {profile.role}
+                  </p>
+                </div>
 
-      <div className="card shadow-sm p-4">
-        <div className="row">
-          <div className="col-md-6 mb-3">
-            <strong>Username</strong>
-            <p className="mb-0">
-              {displayValue(profile.username)}
-            </p>
-          </div>
+                <Link
+                  to="/edit-profile"
+                  className="btn btn-primary"
+                >
+                  Edit Profile
+                </Link>
+              </div>
 
-          <div className="col-md-6 mb-3">
-            <strong>Role</strong>
-            <p className="mb-0 text-capitalize">
-              {displayValue(profile.role)}
-            </p>
-          </div>
+              <div className="row">
+                <div className="col-md-6 mb-3">
+                  <div className="border rounded p-3 h-100">
+                    <small className="text-muted">
+                      Username
+                    </small>
 
-          <div className="col-md-6 mb-3">
-            <strong>First Name</strong>
-            <p className="mb-0">
-              {displayValue(profile.first_name)}
-            </p>
-          </div>
+                    <p className="mb-0 fw-semibold">
+                      {displayValue(
+                        profile.username
+                      )}
+                    </p>
+                  </div>
+                </div>
 
-          <div className="col-md-6 mb-3">
-            <strong>Last Name</strong>
-            <p className="mb-0">
-              {displayValue(profile.last_name)}
-            </p>
-          </div>
+                <div className="col-md-6 mb-3">
+                  <div className="border rounded p-3 h-100">
+                    <small className="text-muted">
+                      Role
+                    </small>
 
-          <div className="col-md-6 mb-3">
-            <strong>Email</strong>
-            <p className="mb-0">
-              {displayValue(profile.email)}
-            </p>
-          </div>
+                    <p className="mb-0 fw-semibold text-capitalize">
+                      {displayValue(profile.role)}
+                    </p>
+                  </div>
+                </div>
 
-          <div className="col-md-6 mb-3">
-            <strong>Phone</strong>
-            <p className="mb-0">
-              {displayValue(profile.phone)}
-            </p>
-          </div>
+                <div className="col-md-6 mb-3">
+                  <div className="border rounded p-3 h-100">
+                    <small className="text-muted">
+                      Email
+                    </small>
 
-          <div className="col-12 mb-3">
-            <strong>Education</strong>
-            <p className="mb-0">
-              {displayValue(profile.education)}
-            </p>
-          </div>
+                    <p className="mb-0 fw-semibold">
+                      {displayValue(
+                        profile.email
+                      )}
+                    </p>
+                  </div>
+                </div>
 
-          <div className="col-12 mb-3">
-            <strong>Skills</strong>
-            <p className="mb-0">
-              {displayValue(profile.skills)}
-            </p>
-          </div>
+                <div className="col-md-6 mb-3">
+                  <div className="border rounded p-3 h-100">
+                    <small className="text-muted">
+                      Phone
+                    </small>
 
-          <div className="col-12">
-            <strong>Experience</strong>
-            <p className="mb-0">
-              {displayValue(profile.experience)}
-            </p>
+                    <p className="mb-0 fw-semibold">
+                      {displayValue(
+                        profile.phone
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {profile.role === "candidate" && (
+                  <div className="col-12 mb-3">
+                    <div className="border rounded p-3">
+                      <small className="text-muted">
+                        Education
+                      </small>
+
+                      <p className="mb-0 fw-semibold">
+                        {displayValue(
+                          profile.education
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {profile.role === "candidate" && (
+                <div className="alert alert-info mt-2 mb-0">
+                  Skills, work experience and previous
+                  companies are obtained from each
+                  uploaded resume during AI screening.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

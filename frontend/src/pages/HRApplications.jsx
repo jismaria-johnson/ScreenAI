@@ -1,51 +1,120 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import API from "../api/axiosConfig";
 
 function HRApplications() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] =
+    useSearchParams();
 
-  const jobFromUrl = searchParams.get("job") || "";
+  const [applications, setApplications] =
+    useState([]);
 
-  const [applications, setApplications] = useState([]);
+  const [allApplications, setAllApplications] =
+    useState([]);
+
   const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const [
+    selectedApplication,
+    setSelectedApplication,
+  ] = useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   const [filters, setFilters] = useState({
-    job: jobFromUrl,
-    min_score: "",
-    recommendation: "",
-    status: "",
+    job: searchParams.get("job") || "",
+    min_score:
+      searchParams.get("min_score") || "",
+    experience:
+      searchParams.get("experience") || "",
+    company:
+      searchParams.get("company") || "",
+    recommendation:
+      searchParams.get("recommendation") || "",
+    status:
+      searchParams.get("status") || "",
   });
 
   useEffect(() => {
-    fetchJobs();
+    initializePage();
   }, []);
 
-  useEffect(() => {
-    const updatedFilters = {
-      job: jobFromUrl,
-      min_score: "",
-      recommendation: "",
-      status: "",
-    };
+  const initializePage = async () => {
+    setLoading(true);
+    setError("");
 
-    setFilters(updatedFilters);
-    fetchApplications(updatedFilters);
-  }, [jobFromUrl]);
-
-  const fetchJobs = async () => {
     try {
-      const response = await API.get("/jobs/");
-      setJobs(response.data);
-    } catch (error) {
-      console.log("Failed to fetch jobs:", error);
+      const [
+        jobsResponse,
+        allApplicationsResponse,
+      ] = await Promise.all([
+        API.get("/jobs/"),
+        API.get("/applications/hr/"),
+      ]);
+
+      setJobs(jobsResponse.data);
+      setAllApplications(
+        allApplicationsResponse.data
+      );
+
+      await fetchApplications(filters);
+    } catch (requestError) {
+      console.error(
+        "Failed to initialise HR applications:",
+        requestError
+      );
+
+      setError(
+        requestError.response?.data?.detail ||
+          "Failed to load candidate applications."
+      );
+
+      setLoading(false);
     }
   };
 
-  const fetchApplications = async (selectedFilters = filters) => {
+  const companyOptions = useMemo(() => {
+    const companyMap = new Map();
+
+    allApplications.forEach((application) => {
+      if (!application.worked_companies) {
+        return;
+      }
+
+      application.worked_companies
+        .split(",")
+        .map((company) => company.trim())
+        .filter(Boolean)
+        .forEach((company) => {
+          const normalisedName =
+            company.toLowerCase();
+
+          if (!companyMap.has(normalisedName)) {
+            companyMap.set(
+              normalisedName,
+              company
+            );
+          }
+        });
+    });
+
+    return Array.from(
+      companyMap.values()
+    ).sort((first, second) =>
+      first.localeCompare(second)
+    );
+  }, [allApplications]);
+
+  const fetchApplications = async (
+    selectedFilters = filters
+  ) => {
     setLoading(true);
+    setError("");
 
     try {
       const params = {};
@@ -55,44 +124,86 @@ function HRApplications() {
       }
 
       if (selectedFilters.min_score) {
-        params.min_score = selectedFilters.min_score;
+        params.min_score =
+          selectedFilters.min_score;
+      }
+
+      if (selectedFilters.experience) {
+        params.experience =
+          selectedFilters.experience;
+      }
+
+      if (selectedFilters.company) {
+        params.company =
+          selectedFilters.company;
       }
 
       if (selectedFilters.recommendation) {
-        params.recommendation = selectedFilters.recommendation;
+        params.recommendation =
+          selectedFilters.recommendation;
       }
 
       if (selectedFilters.status) {
-        params.status = selectedFilters.status;
+        params.status =
+          selectedFilters.status;
       }
 
-      const response = await API.get("/applications/hr/", {
-        params,
-      });
+      const response = await API.get(
+        "/applications/hr/",
+        { params }
+      );
 
       setApplications(response.data);
-    } catch (error) {
-      console.log("Failed to fetch HR applications:", error);
+
+      if (selectedApplication) {
+        const updatedApplication =
+          response.data.find(
+            (application) =>
+              application.id ===
+              selectedApplication.id
+          );
+
+        setSelectedApplication(
+          updatedApplication || null
+        );
+      }
+    } catch (requestError) {
+      console.error(
+        "Failed to fetch applications:",
+        requestError
+      );
+
+      setError(
+        requestError.response?.data?.detail ||
+          "Failed to filter applications."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const handleFilterChange = (event) => {
-    setFilters({
-      ...filters,
-      [event.target.name]: event.target.value,
-    });
+    const { name, value } = event.target;
+
+    setFilters((previousFilters) => ({
+      ...previousFilters,
+      [name]: value,
+    }));
   };
 
   const handleApplyFilters = () => {
-    const updatedParams = {};
+    const urlParameters = {};
 
-    if (filters.job) {
-      updatedParams.job = filters.job;
-    }
+    Object.entries(filters).forEach(
+      ([key, value]) => {
+        if (value) {
+          urlParameters[key] = value;
+        }
+      }
+    );
 
-    setSearchParams(updatedParams);
+    setSearchParams(urlParameters);
+    setSelectedApplication(null);
     fetchApplications(filters);
   };
 
@@ -100,25 +211,49 @@ function HRApplications() {
     const emptyFilters = {
       job: "",
       min_score: "",
+      experience: "",
+      company: "",
       recommendation: "",
       status: "",
     };
 
     setFilters(emptyFilters);
     setSearchParams({});
+    setSelectedApplication(null);
     fetchApplications(emptyFilters);
   };
 
-  const updateStatus = async (applicationId, newStatus) => {
-    try {
-      await API.patch(`/applications/${applicationId}/status/`, {
-        application_status: newStatus,
-      });
+  const updateStatus = async (
+    applicationId,
+    newStatus
+  ) => {
+    setError("");
 
-      fetchApplications(filters);
-    } catch (error) {
-      console.log("Failed to update application status:", error);
-      alert("Failed to update application status.");
+    try {
+      await API.patch(
+        `/applications/${applicationId}/status/`,
+        {
+          application_status: newStatus,
+        }
+      );
+
+      await fetchApplications(filters);
+
+      const allResponse = await API.get(
+        "/applications/hr/"
+      );
+
+      setAllApplications(allResponse.data);
+    } catch (requestError) {
+      console.error(
+        "Failed to update application status:",
+        requestError
+      );
+
+      setError(
+        requestError.response?.data?.detail ||
+          "Failed to update application status."
+      );
     }
   };
 
@@ -134,20 +269,99 @@ function HRApplications() {
     return `http://127.0.0.1:8000${resumePath}`;
   };
 
-  const formatText = (value) => {
-    return value && value.trim() ? value : "None";
+  const getCandidateName = (application) => {
+    const fullName = [
+      application.candidate_first_name,
+      application.candidate_last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return (
+      fullName ||
+      application.candidate_username ||
+      "Unknown candidate"
+    );
+  };
+
+  const displayValue = (
+    value,
+    fallback = "None"
+  ) => {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return fallback;
+    }
+
+    return value;
+  };
+
+  const displayExperience = (value) => {
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return "Not evaluated";
+    }
+
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+      return "Not evaluated";
+    }
+
+    const roundedValue =
+      Math.round(numericValue * 10) / 10;
+
+    const formattedValue =
+      Number.isInteger(roundedValue)
+        ? roundedValue.toString()
+        : roundedValue.toFixed(1);
+
+    return `${formattedValue} ${
+      roundedValue === 1 ? "year" : "years"
+    }`;
+  };
+
+  const formatRecommendation = (
+    recommendation
+  ) => {
+    if (
+      !recommendation ||
+      recommendation === "not_evaluated"
+    ) {
+      return "Not evaluated";
+    }
+
+    return recommendation;
   };
 
   return (
-    <div className="container py-5">
-      <h2 className="mb-4">Candidate Applications</h2>
+    <div className="container-fluid px-4 py-5">
+      <h2 className="mb-4">
+        Candidate Applications
+      </h2>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
 
       <div className="card p-4 mb-4 shadow-sm">
-        <h5 className="mb-3">Filter Applications</h5>
+        <h5 className="mb-3">
+          Filter Applications
+        </h5>
 
         <div className="row">
-          <div className="col-md-3 mb-3">
-            <label className="form-label">Job</label>
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              Job
+            </label>
 
             <select
               name="job"
@@ -155,33 +369,118 @@ function HRApplications() {
               value={filters.job}
               onChange={handleFilterChange}
             >
-              <option value="">All Jobs</option>
+              <option value="">
+                All Jobs
+              </option>
 
               {jobs.map((job) => (
-                <option value={job.id} key={job.id}>
+                <option
+                  value={job.id}
+                  key={job.id}
+                >
                   {job.job_title}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="col-md-3 mb-3">
-            <label className="form-label">Minimum AI Score</label>
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              Minimum AI Score
+            </label>
 
-            <input
-              type="number"
+            <select
               name="min_score"
-              className="form-control"
+              className="form-select"
               value={filters.min_score}
               onChange={handleFilterChange}
-              min="0"
-              max="100"
-              placeholder="Example: 80"
-            />
+            >
+              <option value="">
+                Any Score
+              </option>
+              <option value="50">
+                50 and above
+              </option>
+              <option value="60">
+                60 and above
+              </option>
+              <option value="70">
+                70 and above
+              </option>
+              <option value="80">
+                80 and above
+              </option>
+              <option value="90">
+                90 and above
+              </option>
+            </select>
           </div>
 
-          <div className="col-md-3 mb-3">
-            <label className="form-label">AI Recommendation</label>
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              Experience
+            </label>
+
+            <select
+              name="experience"
+              className="form-select"
+              value={filters.experience}
+              onChange={handleFilterChange}
+            >
+              <option value="">
+                Any Experience
+              </option>
+              <option value="fresher">
+                Fresher
+              </option>
+              <option value="1">
+                1+ years
+              </option>
+              <option value="2">
+                2+ years
+              </option>
+              <option value="3">
+                3+ years
+              </option>
+              <option value="5">
+                5+ years
+              </option>
+              <option value="10">
+                10+ years
+              </option>
+            </select>
+          </div>
+
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              Previous Company
+            </label>
+
+            <select
+              name="company"
+              className="form-select"
+              value={filters.company}
+              onChange={handleFilterChange}
+            >
+              <option value="">
+                All Companies
+              </option>
+
+              {companyOptions.map((company) => (
+                <option
+                  value={company}
+                  key={company}
+                >
+                  {company}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              AI Recommendation
+            </label>
 
             <select
               name="recommendation"
@@ -189,15 +488,28 @@ function HRApplications() {
               value={filters.recommendation}
               onChange={handleFilterChange}
             >
-              <option value="">All Recommendations</option>
-              <option value="shortlist">Shortlist</option>
-              <option value="review">Review</option>
-              <option value="reject">Reject</option>
+              <option value="">
+                All Recommendations
+              </option>
+              <option value="shortlist">
+                Shortlist
+              </option>
+              <option value="review">
+                Review
+              </option>
+              <option value="reject">
+                Reject
+              </option>
+              <option value="not_evaluated">
+                Not Evaluated
+              </option>
             </select>
           </div>
 
-          <div className="col-md-3 mb-3">
-            <label className="form-label">HR Status</label>
+          <div className="col-xl-2 col-md-4 mb-3">
+            <label className="form-label">
+              HR Status
+            </label>
 
             <select
               name="status"
@@ -205,16 +517,25 @@ function HRApplications() {
               value={filters.status}
               onChange={handleFilterChange}
             >
-              <option value="">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="shortlisted">Shortlisted</option>
-              <option value="rejected">Rejected</option>
+              <option value="">
+                All Statuses
+              </option>
+              <option value="pending">
+                Pending
+              </option>
+              <option value="shortlisted">
+                Shortlisted
+              </option>
+              <option value="rejected">
+                Rejected
+              </option>
             </select>
           </div>
         </div>
 
         <div className="d-flex gap-2">
           <button
+            type="button"
             className="btn btn-primary"
             onClick={handleApplyFilters}
           >
@@ -222,6 +543,7 @@ function HRApplications() {
           </button>
 
           <button
+            type="button"
             className="btn btn-outline-secondary"
             onClick={handleClearFilters}
           >
@@ -234,140 +556,320 @@ function HRApplications() {
         <p>Loading applications...</p>
       ) : applications.length === 0 ? (
         <div className="alert alert-info">
-          No applications match the selected filters.
+          No applications match the selected
+          filters.
         </div>
       ) : (
-        <div className="row">
-          {applications.map((application) => {
-            const resumeUrl = getResumeUrl(application.resume);
+        <div className="card shadow-sm mb-4">
+          <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>Candidate</th>
+                  <th>Phone</th>
+                  <th>Job</th>
+                  <th>AI Score</th>
+                  <th>Experience</th>
+                  <th>Previous Companies</th>
+                  <th>AI Recommendation</th>
+                  <th>HR Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
 
-            return (
-              <div
-                className="col-lg-6 mb-4"
-                key={application.id}
-              >
-                <div className="card shadow-sm p-4 h-100">
-                  <h4>{application.candidate_username}</h4>
+              <tbody>
+                {applications.map(
+                  (application) => (
+                    <tr key={application.id}>
+                      <td>
+                        <strong>
+                          {getCandidateName(
+                            application
+                          )}
+                        </strong>
 
-                  <p className="text-muted mb-1">
-                    {application.job_title}
-                  </p>
+                        <div className="small text-muted">
+                          {application.candidate_email ||
+                            application.candidate_username}
+                        </div>
+                      </td>
 
-                  <p className="text-muted">
-                    {application.company_name}
-                  </p>
+                      <td>
+                        {displayValue(
+                          application.candidate_phone,
+                          "Not provided"
+                        )}
+                      </td>
 
-                  <hr />
+                      <td>
+                        {application.job_title}
 
-                  <p>
-                    <strong>HR Status:</strong>{" "}
-                    {application.application_status}
-                  </p>
+                        <div className="small text-muted">
+                          {application.company_name}
+                        </div>
+                      </td>
 
-                  <p>
-                    <strong>AI Score:</strong>{" "}
-                    {application.ai_score ?? "Not evaluated yet"}
-                  </p>
+                      <td>
+                        {application.ai_score ??
+                          "Not evaluated"}
+                      </td>
 
-                  <p>
-                    <strong>AI Recommendation:</strong>{" "}
-                    {application.recommendation === "not_evaluated"
-                      ? "Not evaluated yet"
-                      : application.recommendation}
-                  </p>
+                      <td>
+                        {displayExperience(
+                          application.total_experience_years
+                        )}
+                      </td>
 
-                  <p>
-                    <strong>Matched Skills:</strong>{" "}
-                    {formatText(application.matched_skills)}
-                  </p>
+                      <td>
+                        {displayValue(
+                          application.worked_companies
+                        )}
+                      </td>
 
-                  <p>
-                    <strong>Missing Skills:</strong>{" "}
-                    {formatText(application.missing_skills)}
-                  </p>
+                      <td className="text-capitalize">
+                        {formatRecommendation(
+                          application.recommendation
+                        )}
+                      </td>
 
-                  <p>
-                    <strong>Experience Match:</strong>{" "}
-                    {formatText(application.experience_match)}
-                  </p>
+                      <td className="text-capitalize">
+                        {
+                          application.application_status
+                        }
+                      </td>
 
-                  <p>
-                    <strong>AI Feedback:</strong>{" "}
-                    {application.ai_feedback || "Not evaluated yet"}
-                  </p>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary btn-sm"
+                          onClick={() =>
+                            setSelectedApplication(
+                              application
+                            )
+                          }
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-                  <div className="d-flex gap-2 flex-wrap mb-3">
-                    <a
-                      href={resumeUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn btn-outline-primary btn-sm"
-                    >
-                      View Resume
-                    </a>
+      {selectedApplication && (
+        <div className="card shadow-sm p-4">
+          <div className="d-flex justify-content-between align-items-start mb-3">
+            <div>
+              <h4 className="mb-1">
+                {getCandidateName(
+                  selectedApplication
+                )}
+              </h4>
 
-                    <a
-                      href={resumeUrl}
-                      download
-                      className="btn btn-outline-dark btn-sm"
-                    >
-                      Download Resume
-                    </a>
-                  </div>
+              <p className="text-muted mb-0">
+                {selectedApplication.job_title}
+                {" — "}
+                {
+                  selectedApplication.company_name
+                }
+              </p>
+            </div>
 
-                  <div className="d-flex gap-2 flex-wrap">
-                    <button
-                      className="btn btn-success btn-sm"
-                      onClick={() =>
-                        updateStatus(
-                          application.id,
-                          "shortlisted"
-                        )
-                      }
-                      disabled={
-                        application.application_status ===
-                        "shortlisted"
-                      }
-                    >
-                      Shortlist
-                    </button>
+            <button
+              type="button"
+              className="btn-close"
+              aria-label="Close"
+              onClick={() =>
+                setSelectedApplication(null)
+              }
+            />
+          </div>
 
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() =>
-                        updateStatus(
-                          application.id,
-                          "rejected"
-                        )
-                      }
-                      disabled={
-                        application.application_status ===
-                        "rejected"
-                      }
-                    >
-                      Reject
-                    </button>
+          <div className="row">
+            <div className="col-md-6">
+              <p>
+                <strong>Email:</strong>{" "}
+                {displayValue(
+                  selectedApplication.candidate_email,
+                  "Not provided"
+                )}
+              </p>
 
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() =>
-                        updateStatus(
-                          application.id,
-                          "pending"
-                        )
-                      }
-                      disabled={
-                        application.application_status ===
-                        "pending"
-                      }
-                    >
-                      Mark Pending
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              <p>
+                <strong>Phone:</strong>{" "}
+                {displayValue(
+                  selectedApplication.candidate_phone,
+                  "Not provided"
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Total Experience:
+                </strong>{" "}
+                {displayExperience(
+                  selectedApplication.total_experience_years
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Previous Companies:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.worked_companies
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Experience Summary:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.experience_summary,
+                  "Not evaluated"
+                )}
+              </p>
+            </div>
+
+            <div className="col-md-6">
+              <p>
+                <strong>AI Score:</strong>{" "}
+                {selectedApplication.ai_score ??
+                  "Not evaluated"}
+              </p>
+
+              <p className="text-capitalize">
+                <strong>
+                  AI Recommendation:
+                </strong>{" "}
+                {formatRecommendation(
+                  selectedApplication.recommendation
+                )}
+              </p>
+
+              <p className="text-capitalize">
+                <strong>HR Status:</strong>{" "}
+                {
+                  selectedApplication.application_status
+                }
+              </p>
+
+              <p>
+                <strong>
+                  Matched Skills:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.matched_skills
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Missing Skills:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.missing_skills
+                )}
+              </p>
+            </div>
+          </div>
+
+          <hr />
+
+          <p>
+            <strong>Experience Match:</strong>{" "}
+            {displayValue(
+              selectedApplication.experience_match,
+              "Not evaluated"
+            )}
+          </p>
+
+          <p>
+            <strong>AI Feedback:</strong>{" "}
+            {displayValue(
+              selectedApplication.ai_feedback,
+              "Not evaluated"
+            )}
+          </p>
+
+          <div className="d-flex gap-2 flex-wrap mt-3">
+            <a
+              href={getResumeUrl(
+                selectedApplication.resume
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-outline-primary"
+            >
+              View Resume
+            </a>
+
+            <a
+              href={getResumeUrl(
+                selectedApplication.resume
+              )}
+              download
+              className="btn btn-outline-dark"
+            >
+              Download Resume
+            </a>
+
+            <button
+              type="button"
+              className="btn btn-success"
+              onClick={() =>
+                updateStatus(
+                  selectedApplication.id,
+                  "shortlisted"
+                )
+              }
+              disabled={
+                selectedApplication.application_status ===
+                "shortlisted"
+              }
+            >
+              Shortlist
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() =>
+                updateStatus(
+                  selectedApplication.id,
+                  "rejected"
+                )
+              }
+              disabled={
+                selectedApplication.application_status ===
+                "rejected"
+              }
+            >
+              Reject
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() =>
+                updateStatus(
+                  selectedApplication.id,
+                  "pending"
+                )
+              }
+              disabled={
+                selectedApplication.application_status ===
+                "pending"
+              }
+            >
+              Mark Pending
+            </button>
+          </div>
         </div>
       )}
     </div>
