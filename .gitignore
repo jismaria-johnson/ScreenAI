@@ -1,24 +1,57 @@
-# Python
+# Python virtual environments
 backend/.venv/
-backend/__pycache__/
-backend/*/__pycache__/
-*.pyc
-backend/db.sqlite3
-backend/.env
-backend/media/
+.venv/
+venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Django
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/media/
 backend/staticfiles/
+*.log
 
-# React
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# React / Node
 frontend/node_modules/
 frontend/dist/
-frontend/.env
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# IDE
+# Test and coverage output
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+frontend/coverage/
+
+# Review archives and temporary files
+ScreenAI_review.zip
+ScreenAI_review/
+*.tmp
+*.temp
+
+# IDEs
 .vscode/
 .idea/
+*.code-workspace
 
-# OS
+# Operating system files
 .DS_Store
 Thumbs.db
+desktop.ini
