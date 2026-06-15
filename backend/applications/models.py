@@ -22,12 +22,30 @@ class Application(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name="applications",
+        null=True,
+        blank=True,
     )
 
     job = models.ForeignKey(
         Job,
         on_delete=models.CASCADE,
         related_name="applications",
+    )
+
+    # New fields for public applications (candidates without user account)
+    candidate_name = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+    candidate_email = models.EmailField(
+        blank=True,
+    )
+    candidate_phone = models.CharField(
+        max_length=20,
+        blank=True,
+    )
+    candidate_education = models.TextField(
+        blank=True,
     )
 
     resume = models.FileField(upload_to="resumes/")
@@ -75,7 +93,12 @@ class Application(models.Model):
     submitted_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
+        if self.candidate:
+            return (
+                f"{self.candidate.username} - "
+                f"{self.job.job_title}"
+            )
         return (
-            f"{self.candidate.username} - "
+            f"{self.candidate_name} - "
             f"{self.job.job_title}"
         )

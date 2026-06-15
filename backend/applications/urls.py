@@ -4,6 +4,7 @@ from .views import (
     MyApplicationsView,
     HRApplicationsView,
     UpdateApplicationStatusView,
+    PublicApplicationCreateView,
 )
 
 
@@ -12,4 +13,5 @@ urlpatterns = [
     path("my/", MyApplicationsView.as_view(), name="my_applications"),
     path("hr/", HRApplicationsView.as_view(), name="hr_applications"),
     path("<int:pk>/status/", UpdateApplicationStatusView.as_view(), name="update_application_status"),
+    path("public/<uuid:token>/", PublicApplicationCreateView.as_view(), name="public_application_create"),
 ]

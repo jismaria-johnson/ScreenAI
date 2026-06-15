@@ -10,6 +10,7 @@ from rest_framework.response import (
     Response,
 )
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from ai_engine.gemini_scorer import (
     score_resume_with_gemini,
@@ -27,6 +28,7 @@ from .serializers import (
     ApplicationCreateSerializer,
     CandidateApplicationSerializer,
     HRApplicationSerializer,
+    PublicApplicationCreateSerializer,
 )
 
 
@@ -473,3 +475,210 @@ class UpdateApplicationStatusView(
         return Response(
             serializer.data
         )
+
+
+class PublicApplicationCreateView(
+    generics.CreateAPIView
+):
+    """
+    Public endpoint for candidates to apply without authentication.
+    Accepts multipart form data with candidate details and resume PDF.
+    Job is determined from the URL token, not from user input.
+    """
+    serializer_class = (
+        PublicApplicationCreateSerializer
+    )
+
+    permission_classes = [
+        AllowAny,
+    ]
+
+    parser_classes = [
+        MultiPartParser,
+        FormParser,
+    ]
+
+    def get_job_by_token(self, token):
+        from jobs.models import Job
+        try:
+            return Job.objects.get(
+                application_token=token
+            )
+        except Job.DoesNotExist:
+            raise ValidationError(
+                "Invalid application link."
+            )
+
+    def perform_create(
+        self,
+        serializer,
+    ):
+        from datetime import datetime, timezone
+        
+        token = self.kwargs.get("token")
+        job = self.get_job_by_token(token)
+
+        # Validate job status
+        if job.status != "open":
+            raise ValidationError(
+                {
+                    "job": (
+                        "This job is no longer "
+                        "accepting applications."
+                    )
+                }
+            )
+
+        # Validate application form is enabled
+        if not job.application_form_enabled:
+            raise ValidationError(
+                {
+                    "job": (
+                        "This job is not accepting applications at this time."
+                    )
+                }
+            )
+
+        # Validate deadline
+        if job.application_deadline:
+            now = datetime.now(timezone.utc)
+            deadline = job.application_deadline
+            if isinstance(deadline, datetime) and deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
+            
+            if now > deadline:
+                raise ValidationError(
+                    {
+                        "job": (
+                            "The application deadline for this job has passed."
+                        )
+                    }
+                )
+
+        candidate_email = serializer.validated_data.get(
+            "candidate_email", ""
+        ).lower().strip()
+
+        # Check for duplicate application
+        already_applied = (
+            Application.objects.filter(
+                job=job,
+                candidate_email__iexact=(
+                    candidate_email
+                ),
+            ).exists()
+        )
+
+        if already_applied:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "You have already applied to this job."
+                    )
+                }
+            )
+
+        # Create application without candidate user
+        application = serializer.save(
+            job=job,
+            candidate=None,
+        )
+
+        # Extract resume text
+        extracted_text = (
+            extract_text_from_pdf(
+                application.resume.path
+            )
+        )
+
+        application.extracted_resume_text = (
+            extracted_text
+        )
+
+        if not extracted_text:
+            application.ai_score = None
+
+            application.matched_skills = ""
+
+            application.missing_skills = ""
+
+            application.experience_match = (
+                "Resume text could not "
+                "be extracted."
+            )
+
+            application.total_experience_years = (
+                None
+            )
+
+            application.worked_companies = ""
+
+            application.experience_summary = (
+                "The resume could not be read. "
+                "Please review it manually."
+            )
+
+            application.ai_feedback = (
+                "AI evaluation was not completed "
+                "because resume text extraction failed."
+            )
+
+            application.recommendation = (
+                "not_evaluated"
+            )
+
+            application.save()
+
+            return
+
+        # Process with Gemini
+        ai_result = (
+            score_resume_with_gemini(
+                extracted_text,
+                job,
+            )
+        )
+
+        application.ai_score = (
+            ai_result["ai_score"]
+        )
+
+        application.matched_skills = (
+            ai_result["matched_skills"]
+        )
+
+        application.missing_skills = (
+            ai_result["missing_skills"]
+        )
+
+        application.experience_match = (
+            ai_result["experience_match"]
+        )
+
+        application.total_experience_years = (
+            ai_result[
+                "total_experience_years"
+            ]
+        )
+
+        application.worked_companies = (
+            ai_result[
+                "worked_companies"
+            ]
+        )
+
+        application.experience_summary = (
+            ai_result[
+                "experience_summary"
+            ]
+        )
+
+        application.ai_feedback = (
+            ai_result["ai_feedback"]
+        )
+
+        application.recommendation = (
+            ai_result["recommendation"]
+        )
+
+        application.save()

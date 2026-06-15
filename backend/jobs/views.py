@@ -3,14 +3,16 @@ from rest_framework import generics
 from rest_framework.exceptions import (
     PermissionDenied,
     ValidationError,
+    NotFound,
 )
 from rest_framework.permissions import (
     AllowAny,
     IsAuthenticatedOrReadOnly,
 )
+from rest_framework.response import Response
 
 from .models import Job
-from .serializers import JobSerializer
+from .serializers import JobSerializer, PublicJobSerializer
 
 
 def get_user_role(user):
@@ -151,10 +153,42 @@ class JobDetailView(
             )
 
         if instance.applications.exists():
-            raise ValidationError(
-                "This job cannot be deleted because "
-                "it already has candidate applications. "
+            raise PermissionDenied(
+                "You cannot delete a job that has applications. "
                 "Close the job instead."
             )
 
         instance.delete()
+
+
+class PublicJobDetailView(
+    generics.GenericAPIView
+):
+    """
+    Retrieve public job details by application token.
+    """
+    serializer_class = PublicJobSerializer
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            job = Job.objects.get(
+                application_token=token
+            )
+        except Job.DoesNotExist:
+            raise NotFound(
+                "Job not found."
+            )
+
+        if job.status != "open":
+            return Response(
+                {
+                    "detail": (
+                        "This job is no longer accepting applications."
+                    )
+                },
+                status=400,
+            )
+
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)

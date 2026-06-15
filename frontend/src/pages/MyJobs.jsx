@@ -7,6 +7,8 @@ function MyJobs() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copiedJobId, setCopiedJobId] = useState(null);
+  const [togglingFormId, setTogglingFormId] = useState(null);
 
   useEffect(() => {
     fetchJobs();
@@ -24,6 +26,29 @@ function MyJobs() {
       setError("Could not load your jobs.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const copyApplicationLink = (token) => {
+    const link = `http://localhost:5173/apply/public/${token}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedJobId(token);
+      setTimeout(() => setCopiedJobId(null), 2000);
+    });
+  };
+
+  const toggleApplicationForm = async (job) => {
+    try {
+      setTogglingFormId(job.id);
+      await API.patch(`/jobs/${job.id}/`, {
+        application_form_enabled: !job.application_form_enabled,
+      });
+      await fetchJobs();
+    } catch (err) {
+      console.log("Failed to toggle form:", err);
+      alert("Could not update form setting.");
+    } finally {
+      setTogglingFormId(null);
     }
   };
 
@@ -71,6 +96,11 @@ function MyJobs() {
     }
   };
 
+  const isDeadlinePassed = (deadline) => {
+    if (!deadline) return false;
+    return new Date(deadline) < new Date();
+  };
+
   if (loading) {
     return (
       <div className="container py-5">
@@ -108,11 +138,14 @@ function MyJobs() {
           {jobs.map((job) => {
             const applicantCount = job.applicant_count ?? 0;
             const hasApplications = applicantCount > 0;
+            const deadlinePassed = isDeadlinePassed(
+              job.application_deadline
+            );
 
             return (
               <div className="col-lg-6 mb-4" key={job.id}>
                 <div className="card shadow-sm p-4 h-100">
-                  <div className="d-flex justify-content-between align-items-start">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
                     <div>
                       <h4>{job.job_title}</h4>
                       <p className="text-muted">
@@ -130,6 +163,27 @@ function MyJobs() {
                       {job.status}
                     </span>
                   </div>
+
+                  {job.status === "open" && (
+                    <div className="mb-3">
+                      {!job.application_form_enabled && (
+                        <div className="alert alert-warning py-2 mb-2">
+                          Application form is disabled
+                        </div>
+                      )}
+                      {deadlinePassed && (
+                        <div className="alert alert-danger py-2 mb-2">
+                          Application deadline has passed
+                        </div>
+                      )}
+                      {job.application_form_enabled &&
+                        !deadlinePassed && (
+                          <div className="alert alert-success py-2 mb-2">
+                            Accepting applications
+                          </div>
+                        )}
+                    </div>
+                  )}
 
                   <p>
                     <strong>Required Skills:</strong>{" "}
@@ -151,6 +205,15 @@ function MyJobs() {
                     {applicantCount}
                   </p>
 
+                  {job.application_deadline && (
+                    <p>
+                      <strong>Deadline:</strong>{" "}
+                      {new Date(
+                        job.application_deadline
+                      ).toLocaleDateString()}
+                    </p>
+                  )}
+
                   <p>{job.job_description}</p>
 
                   {hasApplications && (
@@ -160,7 +223,43 @@ function MyJobs() {
                     </div>
                   )}
 
-                  <div className="d-flex gap-2 flex-wrap mt-auto">
+                  <div className="d-grid gap-2 mt-auto">
+                    {job.status === "open" && (
+                      <button
+                        className="btn btn-info btn-sm"
+                        onClick={() =>
+                          copyApplicationLink(
+                            job.application_token
+                          )
+                        }
+                        title="Copy the public application link to share with candidates"
+                      >
+                        {copiedJobId === job.application_token
+                          ? "✓ Link Copied!"
+                          : "📋 Copy Application Link"}
+                      </button>
+                    )}
+
+                    {job.status === "open" && (
+                      <button
+                        className={`btn btn-sm ${
+                          job.application_form_enabled
+                            ? "btn-outline-warning"
+                            : "btn-outline-success"
+                        }`}
+                        onClick={() =>
+                          toggleApplicationForm(job)
+                        }
+                        disabled={
+                          togglingFormId === job.id
+                        }
+                      >
+                        {job.application_form_enabled
+                          ? "Disable Form"
+                          : "Enable Form"}
+                      </button>
+                    )}
+
                     <Link
                       to={`/edit-job/${job.id}`}
                       className="btn btn-outline-primary btn-sm"

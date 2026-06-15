@@ -33,3 +33,24 @@ class JobSerializer(serializers.ModelSerializer):
             "applicant_count",
             "created_at",
         ]
+
+
+class PublicJobSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "job_title",
+            "company_name",
+            "job_description",
+            "required_skills",
+            "required_experience",
+            "location",
+            "status",
+            "application_form_enabled",
+            "application_deadline",
+        ]
+
+        read_only_fields = fields

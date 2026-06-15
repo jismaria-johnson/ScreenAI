@@ -1,8 +1,10 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
 from rest_framework import serializers
 
 from .models import Application
+from jobs.models import Job
 
 
 MAX_RESUME_SIZE = 5 * 1024 * 1024
@@ -126,30 +128,11 @@ class CandidateApplicationSerializer(
 class HRApplicationSerializer(
     serializers.ModelSerializer
 ):
-    candidate_username = serializers.CharField(
-        source="candidate.username",
-        read_only=True,
-    )
-
-    candidate_first_name = serializers.CharField(
-        source="candidate.first_name",
-        read_only=True,
-    )
-
-    candidate_last_name = serializers.CharField(
-        source="candidate.last_name",
-        read_only=True,
-    )
-
-    candidate_email = serializers.EmailField(
-        source="candidate.email",
-        read_only=True,
-    )
-
-    candidate_phone = serializers.CharField(
-        source="candidate.profile.phone",
-        read_only=True,
-    )
+    candidate_username = serializers.SerializerMethodField()
+    candidate_first_name = serializers.SerializerMethodField()
+    candidate_last_name = serializers.SerializerMethodField()
+    candidate_email_db = serializers.SerializerMethodField()
+    candidate_phone_db = serializers.SerializerMethodField()
 
     job_title = serializers.CharField(
         source="job.job_title",
@@ -161,6 +144,31 @@ class HRApplicationSerializer(
         read_only=True,
     )
 
+    def get_candidate_username(self, obj):
+        if obj.candidate:
+            return obj.candidate.username
+        return ""
+
+    def get_candidate_first_name(self, obj):
+        if obj.candidate:
+            return obj.candidate.first_name
+        return ""
+
+    def get_candidate_last_name(self, obj):
+        if obj.candidate:
+            return obj.candidate.last_name
+        return ""
+
+    def get_candidate_email_db(self, obj):
+        if obj.candidate:
+            return obj.candidate.email
+        return ""
+
+    def get_candidate_phone_db(self, obj):
+        if obj.candidate and hasattr(obj.candidate, "profile"):
+            return obj.candidate.profile.phone
+        return ""
+
     class Meta:
         model = Application
         fields = [
@@ -169,8 +177,12 @@ class HRApplicationSerializer(
             "candidate_username",
             "candidate_first_name",
             "candidate_last_name",
+            "candidate_email_db",
+            "candidate_phone_db",
+            "candidate_name",
             "candidate_email",
             "candidate_phone",
+            "candidate_education",
             "job",
             "job_title",
             "company_name",
@@ -189,3 +201,128 @@ class HRApplicationSerializer(
         ]
 
         read_only_fields = fields
+
+
+class PublicJobSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "job_title",
+            "company_name",
+            "job_description",
+            "required_skills",
+            "required_experience",
+            "location",
+            "status",
+            "application_form_enabled",
+            "application_deadline",
+        ]
+
+        read_only_fields = fields
+
+
+class PublicApplicationCreateSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Application
+        fields = [
+            "id",
+            "candidate_name",
+            "candidate_email",
+            "candidate_phone",
+            "candidate_education",
+            "resume",
+        ]
+
+        read_only_fields = [
+            "id",
+        ]
+
+    def validate_candidate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                "Full name is required."
+            )
+        return value.strip()
+
+    def validate_candidate_email(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                "Email is required."
+            )
+        return value.strip().lower()
+
+    def validate_candidate_phone(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                "Phone number is required."
+            )
+        return value.strip()
+
+    def validate_resume(self, resume):
+        if not resume:
+            raise serializers.ValidationError(
+                "Please upload a resume."
+            )
+
+        if resume.size == 0:
+            raise serializers.ValidationError(
+                "The uploaded resume is empty."
+            )
+
+        if resume.size > MAX_RESUME_SIZE:
+            raise serializers.ValidationError(
+                "Resume size must not exceed 5 MB."
+            )
+
+        extension = Path(
+            resume.name
+        ).suffix.lower()
+
+        if extension != ".pdf":
+            raise serializers.ValidationError(
+                "Only PDF resumes are accepted."
+            )
+
+        content_type = getattr(
+            resume,
+            "content_type",
+            "",
+        )
+
+        allowed_content_types = [
+            "application/pdf",
+            "application/x-pdf",
+        ]
+
+        if (
+            content_type
+            and content_type
+            not in allowed_content_types
+        ):
+            raise serializers.ValidationError(
+                "The uploaded file must be a valid PDF."
+            )
+
+        try:
+            first_bytes = resume.read(5)
+            resume.seek(0)
+
+            if first_bytes != b"%PDF-":
+                raise serializers.ValidationError(
+                    "The uploaded file is not a valid PDF."
+                )
+
+        except serializers.ValidationError:
+            raise
+
+        except Exception:
+            raise serializers.ValidationError(
+                "The uploaded PDF could not be validated."
+            )
+
+        return resume

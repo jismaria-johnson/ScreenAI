@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     JobDetailView,
     JobListCreateView,
+    PublicJobDetailView,
 )
 
 
@@ -16,5 +17,10 @@ urlpatterns = [
         "<int:pk>/",
         JobDetailView.as_view(),
         name="job-detail",
+    ),
+    path(
+        "public/<uuid:token>/",
+        PublicJobDetailView.as_view(),
+        name="public-job-detail",
     ),
 ]

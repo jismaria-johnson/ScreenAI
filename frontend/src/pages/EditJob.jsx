@@ -15,6 +15,8 @@ function EditJob() {
     required_experience: "",
     location: "",
     status: "open",
+    application_form_enabled: true,
+    application_deadline: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,11 @@ function EditJob() {
         required_experience: job.required_experience || "",
         location: job.location || "",
         status: job.status || "open",
+        application_form_enabled:
+          job.application_form_enabled !== undefined
+            ? job.application_form_enabled
+            : true,
+        application_deadline: job.application_deadline || "",
       });
     } catch (err) {
       console.log("Failed to fetch job:", err);
@@ -48,9 +55,10 @@ function EditJob() {
   };
 
   const handleChange = (event) => {
+    const { name, value, type, checked } = event.target;
     setFormData({
       ...formData,
-      [event.target.name]: event.target.value,
+      [name]: type === "checkbox" ? checked : value,
     });
   };
 
@@ -61,7 +69,13 @@ function EditJob() {
     setError("");
 
     try {
-      await API.patch(`/jobs/${jobId}/`, formData);
+      // Prepare data - if deadline is empty, don't send it
+      const dataToSend = { ...formData };
+      if (!dataToSend.application_deadline) {
+        dataToSend.application_deadline = null;
+      }
+
+      await API.patch(`/jobs/${jobId}/`, dataToSend);
 
       alert("Job updated successfully.");
 
@@ -193,6 +207,44 @@ function EditJob() {
             value={formData.location}
             onChange={handleChange}
           />
+        </div>
+
+        <div className="mb-3">
+          <label className="form-label">
+            Application Deadline (Optional)
+          </label>
+
+          <input
+            type="datetime-local"
+            name="application_deadline"
+            className="form-control"
+            value={formData.application_deadline}
+            onChange={handleChange}
+          />
+          <small className="text-muted">
+            Leave blank to allow indefinite applications.
+          </small>
+        </div>
+
+        <div className="mb-3 form-check">
+          <input
+            type="checkbox"
+            id="application_form_enabled"
+            name="application_form_enabled"
+            className="form-check-input"
+            checked={formData.application_form_enabled}
+            onChange={handleChange}
+          />
+          <label
+            className="form-check-label"
+            htmlFor="application_form_enabled"
+          >
+            Enable Application Form
+          </label>
+          <small className="d-block text-muted mt-1">
+            Candidates can submit applications through the public link when
+            enabled.
+          </small>
         </div>
 
         <div className="mb-3">

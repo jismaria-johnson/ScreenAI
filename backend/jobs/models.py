@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -21,6 +23,18 @@ class Job(models.Model):
     location = models.CharField(max_length=100, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # New fields for public application flow
+    application_token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
+    application_form_enabled = models.BooleanField(default=True)
+    application_deadline = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
 
     def __str__(self):
         return f"{self.job_title} - {self.company_name}"

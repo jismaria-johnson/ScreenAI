@@ -15,8 +15,7 @@ function Register() {
     last_name: "",
     email: "",
     phone: "",
-    education: "",
-    role: "candidate",
+    role: "hr",
     password: "",
     confirm_password: "",
   });
@@ -103,15 +102,6 @@ function Register() {
 
     if (!formData.email.trim()) {
       return "Email is required.";
-    }
-
-    if (
-      formData.role === "candidate" &&
-      !formData.phone.trim()
-    ) {
-      return (
-        "Phone number is required for candidates."
-      );
     }
 
     if (formData.password.length < 6) {

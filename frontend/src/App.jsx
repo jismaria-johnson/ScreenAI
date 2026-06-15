@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import MyApplications from "./pages/MyApplications";
 import MyJobs from "./pages/MyJobs";
 import Profile from "./pages/Profile";
+import PublicApplyJob from "./pages/PublicApplyJob";
 import Register from "./pages/Register";
 
 function App() {
@@ -45,6 +46,11 @@ function App() {
         <Route
           path="/jobs"
           element={<JobList />}
+        />
+
+        <Route
+          path="/apply/public/:token"
+          element={<PublicApplyJob />}
         />
 
         <Route
