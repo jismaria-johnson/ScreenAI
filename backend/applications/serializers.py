@@ -1,13 +1,78 @@
 from pathlib import Path
-from datetime import datetime, timezone
 
 from rest_framework import serializers
 
-from .models import Application
 from jobs.models import Job
+
+from .models import Application
 
 
 MAX_RESUME_SIZE = 5 * 1024 * 1024
+
+
+def validate_pdf_resume(resume):
+    if not resume:
+        raise serializers.ValidationError(
+            "Please upload a resume."
+        )
+
+    if resume.size == 0:
+        raise serializers.ValidationError(
+            "The uploaded resume is empty."
+        )
+
+    if resume.size > MAX_RESUME_SIZE:
+        raise serializers.ValidationError(
+            "Resume size must not exceed 5 MB."
+        )
+
+    extension = Path(
+        resume.name
+    ).suffix.lower()
+
+    if extension != ".pdf":
+        raise serializers.ValidationError(
+            "Only PDF resumes are accepted."
+        )
+
+    content_type = getattr(
+        resume,
+        "content_type",
+        "",
+    )
+
+    allowed_content_types = [
+        "application/pdf",
+        "application/x-pdf",
+    ]
+
+    if (
+        content_type
+        and content_type
+        not in allowed_content_types
+    ):
+        raise serializers.ValidationError(
+            "The uploaded file must be a valid PDF."
+        )
+
+    try:
+        first_bytes = resume.read(5)
+        resume.seek(0)
+
+        if first_bytes != b"%PDF-":
+            raise serializers.ValidationError(
+                "The uploaded file is not a valid PDF."
+            )
+
+    except serializers.ValidationError:
+        raise
+
+    except Exception:
+        raise serializers.ValidationError(
+            "The uploaded PDF could not be validated."
+        )
+
+    return resume
 
 
 class ApplicationCreateSerializer(
@@ -34,68 +99,7 @@ class ApplicationCreateSerializer(
         return job
 
     def validate_resume(self, resume):
-        if not resume:
-            raise serializers.ValidationError(
-                "Please upload a resume."
-            )
-
-        if resume.size == 0:
-            raise serializers.ValidationError(
-                "The uploaded resume is empty."
-            )
-
-        if resume.size > MAX_RESUME_SIZE:
-            raise serializers.ValidationError(
-                "Resume size must not exceed 5 MB."
-            )
-
-        extension = Path(
-            resume.name
-        ).suffix.lower()
-
-        if extension != ".pdf":
-            raise serializers.ValidationError(
-                "Only PDF resumes are accepted."
-            )
-
-        content_type = getattr(
-            resume,
-            "content_type",
-            "",
-        )
-
-        allowed_content_types = [
-            "application/pdf",
-            "application/x-pdf",
-        ]
-
-        if (
-            content_type
-            and content_type
-            not in allowed_content_types
-        ):
-            raise serializers.ValidationError(
-                "The uploaded file must be a valid PDF."
-            )
-
-        try:
-            first_bytes = resume.read(5)
-            resume.seek(0)
-
-            if first_bytes != b"%PDF-":
-                raise serializers.ValidationError(
-                    "The uploaded file is not a valid PDF."
-                )
-
-        except serializers.ValidationError:
-            raise
-
-        except Exception:
-            raise serializers.ValidationError(
-                "The uploaded PDF could not be validated."
-            )
-
-        return resume
+        return validate_pdf_resume(resume)
 
 
 class CandidateApplicationSerializer(
@@ -128,11 +132,25 @@ class CandidateApplicationSerializer(
 class HRApplicationSerializer(
     serializers.ModelSerializer
 ):
-    candidate_username = serializers.SerializerMethodField()
-    candidate_first_name = serializers.SerializerMethodField()
-    candidate_last_name = serializers.SerializerMethodField()
-    candidate_email_db = serializers.SerializerMethodField()
-    candidate_phone_db = serializers.SerializerMethodField()
+    candidate_username = (
+        serializers.SerializerMethodField()
+    )
+
+    candidate_first_name = (
+        serializers.SerializerMethodField()
+    )
+
+    candidate_last_name = (
+        serializers.SerializerMethodField()
+    )
+
+    candidate_email_db = (
+        serializers.SerializerMethodField()
+    )
+
+    candidate_phone_db = (
+        serializers.SerializerMethodField()
+    )
 
     job_title = serializers.CharField(
         source="job.job_title",
@@ -147,27 +165,41 @@ class HRApplicationSerializer(
     def get_candidate_username(self, obj):
         if obj.candidate:
             return obj.candidate.username
+
         return ""
 
     def get_candidate_first_name(self, obj):
         if obj.candidate:
             return obj.candidate.first_name
-        return ""
+
+        return obj.candidate_name or ""
 
     def get_candidate_last_name(self, obj):
         if obj.candidate:
             return obj.candidate.last_name
+
         return ""
 
     def get_candidate_email_db(self, obj):
         if obj.candidate:
             return obj.candidate.email
-        return ""
+
+        return obj.candidate_email or ""
 
     def get_candidate_phone_db(self, obj):
-        if obj.candidate and hasattr(obj.candidate, "profile"):
-            return obj.candidate.profile.phone
-        return ""
+        if (
+            obj.candidate
+            and hasattr(
+                obj.candidate,
+                "profile",
+            )
+        ):
+            return (
+                obj.candidate.profile.phone
+                or ""
+            )
+
+        return obj.candidate_phone or ""
 
     class Meta:
         model = Application
@@ -242,87 +274,50 @@ class PublicApplicationCreateSerializer(
             "id",
         ]
 
-    def validate_candidate_name(self, value):
+    def validate_candidate_name(
+        self,
+        value,
+    ):
         if not value or not value.strip():
             raise serializers.ValidationError(
                 "Full name is required."
             )
+
         return value.strip()
 
-    def validate_candidate_email(self, value):
+    def validate_candidate_email(
+        self,
+        value,
+    ):
         if not value or not value.strip():
             raise serializers.ValidationError(
                 "Email is required."
             )
+
         return value.strip().lower()
 
-    def validate_candidate_phone(self, value):
+    def validate_candidate_phone(
+        self,
+        value,
+    ):
         if not value or not value.strip():
             raise serializers.ValidationError(
                 "Phone number is required."
             )
+
         return value.strip()
 
-    def validate_resume(self, resume):
-        if not resume:
-            raise serializers.ValidationError(
-                "Please upload a resume."
-            )
+    def validate_candidate_education(
+        self,
+        value,
+    ):
+        if not value:
+            return ""
 
-        if resume.size == 0:
-            raise serializers.ValidationError(
-                "The uploaded resume is empty."
-            )
+        return value.strip()
 
-        if resume.size > MAX_RESUME_SIZE:
-            raise serializers.ValidationError(
-                "Resume size must not exceed 5 MB."
-            )
-
-        extension = Path(
-            resume.name
-        ).suffix.lower()
-
-        if extension != ".pdf":
-            raise serializers.ValidationError(
-                "Only PDF resumes are accepted."
-            )
-
-        content_type = getattr(
-            resume,
-            "content_type",
-            "",
-        )
-
-        allowed_content_types = [
-            "application/pdf",
-            "application/x-pdf",
-        ]
-
-        if (
-            content_type
-            and content_type
-            not in allowed_content_types
-        ):
-            raise serializers.ValidationError(
-                "The uploaded file must be a valid PDF."
-            )
-
-        try:
-            first_bytes = resume.read(5)
-            resume.seek(0)
-
-            if first_bytes != b"%PDF-":
-                raise serializers.ValidationError(
-                    "The uploaded file is not a valid PDF."
-                )
-
-        except serializers.ValidationError:
-            raise
-
-        except Exception:
-            raise serializers.ValidationError(
-                "The uploaded PDF could not be validated."
-            )
-
-        return resume
+    def validate_resume(
+        self,
+        resume,
+    ):
+        return validate_pdf_resume(resume)

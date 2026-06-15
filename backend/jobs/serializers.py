@@ -6,10 +6,12 @@ from .models import Job
 class JobSerializer(serializers.ModelSerializer):
     hr_username = serializers.CharField(
         source="hr_user.username",
-        read_only=True
+        read_only=True,
     )
+
     applicant_count = serializers.IntegerField(
-        read_only=True
+        read_only=True,
+        default=0,
     )
 
     class Meta:
@@ -25,23 +27,25 @@ class JobSerializer(serializers.ModelSerializer):
             "required_experience",
             "location",
             "status",
+            "application_token",
+            "application_form_enabled",
+            "application_deadline",
             "applicant_count",
             "created_at",
         ]
+
         read_only_fields = [
             "hr_user",
+            "application_token",
             "applicant_count",
             "created_at",
         ]
 
 
-class PublicJobSerializer(
-    serializers.ModelSerializer
-):
+class PublicJobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            "id",
             "job_title",
             "company_name",
             "job_description",
