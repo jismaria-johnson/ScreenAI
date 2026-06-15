@@ -1,5 +1,8 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer,
+)
 
 from .models import Profile
 
@@ -16,18 +19,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         style={"input_type": "password"},
     )
 
-    role = serializers.ChoiceField(
-        choices=Profile.ROLE_CHOICES,
-        write_only=True,
-    )
-
     phone = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True,
-    )
-
-    education = serializers.CharField(
         required=False,
         allow_blank=True,
         write_only=True,
@@ -40,11 +32,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "email",
+            "phone",
             "password",
             "confirm_password",
-            "role",
-            "phone",
-            "education",
         ]
 
     def validate_username(self, value):
@@ -83,6 +73,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         password = attrs.get("password")
+
         confirm_password = attrs.pop(
             "confirm_password",
             None,
@@ -97,37 +88,17 @@ class RegisterSerializer(serializers.ModelSerializer):
                 }
             )
 
-        role = attrs.get("role")
-
-        if role == "candidate":
-            phone = attrs.get("phone", "").strip()
-
-            if not phone:
-                raise serializers.ValidationError(
-                    {
-                        "phone": (
-                            "Phone number is required "
-                            "for candidates."
-                        )
-                    }
-                )
-
         return attrs
 
     def create(self, validated_data):
-        role = validated_data.pop("role")
-
         phone = validated_data.pop(
             "phone",
             "",
         ).strip()
 
-        education = validated_data.pop(
-            "education",
-            "",
-        ).strip()
-
-        password = validated_data.pop("password")
+        password = validated_data.pop(
+            "password"
+        )
 
         user = User.objects.create_user(
             password=password,
@@ -138,18 +109,36 @@ class RegisterSerializer(serializers.ModelSerializer):
             user=user
         )
 
-        profile.role = role
+        profile.role = "hr"
         profile.phone = phone
-        profile.education = education
-
-        # These fields remain empty because skills and
-        # experience are extracted from uploaded resumes.
+        profile.education = ""
         profile.skills = ""
         profile.experience = ""
-
         profile.save()
 
         return user
+
+
+class HRTokenObtainPairSerializer(
+    TokenObtainPairSerializer
+):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        profile = getattr(
+            self.user,
+            "profile",
+            None,
+        )
+
+        if not profile or profile.role != "hr":
+            raise serializers.ValidationError(
+                "Only HR accounts can log in."
+            )
+
+        data["role"] = "hr"
+
+        return data
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -188,7 +177,6 @@ class ProfileSerializer(serializers.ModelSerializer):
             "email",
             "role",
             "phone",
-            "education",
         ]
 
     def validate_email(self, value):
@@ -212,9 +200,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         return value
 
     def validate_phone(self, value):
-        return value.strip()
-
-    def validate_education(self, value):
         return value.strip()
 
     def update(self, instance, validated_data):
@@ -245,11 +230,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         instance.phone = validated_data.get(
             "phone",
             instance.phone,
-        )
-
-        instance.education = validated_data.get(
-            "education",
-            instance.education,
         )
 
         instance.save()

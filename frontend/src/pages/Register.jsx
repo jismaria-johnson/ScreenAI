@@ -9,33 +9,42 @@ import API from "../api/axiosConfig";
 function Register() {
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState({
-    username: "",
-    first_name: "",
-    last_name: "",
-    email: "",
-    phone: "",
-    role: "hr",
-    password: "",
-    confirm_password: "",
-  });
+  const [formData, setFormData] =
+    useState({
+      username: "",
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone: "",
+      password: "",
+      confirm_password: "",
+    });
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
+
   const [submitting, setSubmitting] =
     useState(false);
 
   const handleChange = (event) => {
-    const { name, value } = event.target;
+    const {
+      name,
+      value,
+    } = event.target;
 
     setError("");
 
-    setFormData((previousData) => ({
-      ...previousData,
-      [name]: value,
-    }));
+    setFormData(
+      (previousData) => ({
+        ...previousData,
+        [name]: value,
+      })
+    );
   };
 
-  const getErrorMessage = (requestError) => {
+  const getErrorMessage = (
+    requestError
+  ) => {
     const responseData =
       requestError.response?.data;
 
@@ -46,7 +55,9 @@ function Register() {
       );
     }
 
-    if (typeof responseData === "string") {
+    if (
+      typeof responseData === "string"
+    ) {
       return responseData;
     }
 
@@ -54,8 +65,12 @@ function Register() {
       return responseData.detail;
     }
 
-    if (responseData.non_field_errors?.length) {
-      return responseData.non_field_errors[0];
+    if (
+      responseData.non_field_errors?.length
+    ) {
+      return (
+        responseData.non_field_errors[0]
+      );
     }
 
     const fieldLabels = {
@@ -64,22 +79,24 @@ function Register() {
       last_name: "Last name",
       email: "Email",
       phone: "Phone number",
-      education: "Education",
-      role: "Role",
       password: "Password",
       confirm_password: "Confirm password",
     };
 
-    for (const [field, messages] of Object.entries(
-      responseData
-    )) {
-      const label = fieldLabels[field] || field;
+    for (
+      const [field, messages]
+      of Object.entries(responseData)
+    ) {
+      const label =
+        fieldLabels[field] || field;
 
       if (Array.isArray(messages)) {
         return `${label}: ${messages[0]}`;
       }
 
-      if (typeof messages === "string") {
+      if (
+        typeof messages === "string"
+      ) {
         return `${label}: ${messages}`;
       }
     }
@@ -104,7 +121,9 @@ function Register() {
       return "Email is required.";
     }
 
-    if (formData.password.length < 6) {
+    if (
+      formData.password.length < 6
+    ) {
       return (
         "Password must contain at least 6 characters."
       );
@@ -120,12 +139,15 @@ function Register() {
     return "";
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (
+    event
+  ) => {
     event.preventDefault();
 
     setError("");
 
-    const validationError = validateForm();
+    const validationError =
+      validateForm();
 
     if (validationError) {
       setError(validationError);
@@ -140,7 +162,9 @@ function Register() {
         formData
       );
 
-      alert("Registration successful.");
+      alert(
+        "HR account created successfully."
+      );
 
       navigate("/login", {
         replace: true,
@@ -152,7 +176,9 @@ function Register() {
       );
 
       setError(
-        getErrorMessage(requestError)
+        getErrorMessage(
+          requestError
+        )
       );
     } finally {
       setSubmitting(false);
@@ -165,9 +191,15 @@ function Register() {
         <div className="col-lg-7 col-md-9">
           <div className="card shadow-sm">
             <div className="card-body p-4">
-              <h2 className="mb-4">
-                Create Account
+              <h2 className="mb-2">
+                Create HR Account
               </h2>
+
+              <p className="text-muted mb-4">
+                Candidate accounts are not required.
+                Candidates apply through public links
+                shared by HR.
+              </p>
 
               {error && (
                 <div className="alert alert-danger">
@@ -175,7 +207,9 @@ function Register() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit}>
+              <form
+                onSubmit={handleSubmit}
+              >
                 <div className="row">
                   <div className="col-md-6 mb-3">
                     <label
@@ -190,7 +224,9 @@ function Register() {
                       name="first_name"
                       type="text"
                       className="form-control"
-                      value={formData.first_name}
+                      value={
+                        formData.first_name
+                      }
                       onChange={handleChange}
                       required
                       disabled={submitting}
@@ -210,7 +246,9 @@ function Register() {
                       name="last_name"
                       type="text"
                       className="form-control"
-                      value={formData.last_name}
+                      value={
+                        formData.last_name
+                      }
                       onChange={handleChange}
                       required
                       disabled={submitting}
@@ -231,7 +269,9 @@ function Register() {
                     name="username"
                     type="text"
                     className="form-control"
-                    value={formData.username}
+                    value={
+                      formData.username
+                    }
                     onChange={handleChange}
                     required
                     disabled={submitting}
@@ -251,7 +291,9 @@ function Register() {
                     name="email"
                     type="email"
                     className="form-control"
-                    value={formData.email}
+                    value={
+                      formData.email
+                    }
                     onChange={handleChange}
                     required
                     disabled={submitting}
@@ -260,76 +302,24 @@ function Register() {
 
                 <div className="mb-3">
                   <label
-                    htmlFor="role"
+                    htmlFor="phone"
                     className="form-label"
                   >
-                    Account Type
+                    Phone Number
                   </label>
 
-                  <select
-                    id="role"
-                    name="role"
-                    className="form-select"
-                    value={formData.role}
+                  <input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    className="form-control"
+                    value={
+                      formData.phone
+                    }
                     onChange={handleChange}
                     disabled={submitting}
-                  >
-                    <option value="candidate">
-                      Candidate
-                    </option>
-
-                    <option value="hr">
-                      HR
-                    </option>
-                  </select>
+                  />
                 </div>
-
-                {formData.role === "candidate" && (
-                  <>
-                    <div className="mb-3">
-                      <label
-                        htmlFor="phone"
-                        className="form-label"
-                      >
-                        Phone Number
-                      </label>
-
-                      <input
-                        id="phone"
-                        name="phone"
-                        type="tel"
-                        className="form-control"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        placeholder="Enter phone number"
-                        required
-                        disabled={submitting}
-                      />
-                    </div>
-
-                    <div className="mb-3">
-                      <label
-                        htmlFor="education"
-                        className="form-label"
-                      >
-                        Education
-                      </label>
-
-                      <textarea
-                        id="education"
-                        name="education"
-                        className="form-control"
-                        rows="3"
-                        value={formData.education}
-                        onChange={handleChange}
-                        placeholder={
-                          "Example: B.Tech Computer Science"
-                        }
-                        disabled={submitting}
-                      />
-                    </div>
-                  </>
-                )}
 
                 <div className="row">
                   <div className="col-md-6 mb-3">
@@ -345,7 +335,9 @@ function Register() {
                       name="password"
                       type="password"
                       className="form-control"
-                      value={formData.password}
+                      value={
+                        formData.password
+                      }
                       onChange={handleChange}
                       minLength="6"
                       required
@@ -384,13 +376,15 @@ function Register() {
                 >
                   {submitting
                     ? "Creating account..."
-                    : "Register"}
+                    : "Create HR Account"}
                 </button>
               </form>
 
               <p className="text-center mt-3 mb-0">
-                Already have an account?{" "}
-                <Link to="/login">Login</Link>
+                Already have an HR account?{" "}
+                <Link to="/login">
+                  Login
+                </Link>
               </p>
             </div>
           </div>

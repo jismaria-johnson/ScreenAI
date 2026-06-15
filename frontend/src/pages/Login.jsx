@@ -12,7 +12,7 @@ import {
 import API from "../api/axiosConfig";
 
 import {
-  getDashboardPath,
+  clearAuthData,
   isLoggedIn,
   saveAuthData,
 } from "../utils/auth";
@@ -42,7 +42,7 @@ function Login() {
   useEffect(() => {
     if (isLoggedIn()) {
       navigate(
-        getDashboardPath(),
+        "/hr-dashboard",
         {
           replace: true,
         }
@@ -93,13 +93,19 @@ function Login() {
     }
 
     if (
-      responseData?.detail
+      responseData?.non_field_errors?.length
     ) {
+      return (
+        responseData.non_field_errors[0]
+      );
+    }
+
+    if (responseData?.detail) {
       return responseData.detail;
     }
 
     return (
-      "Invalid username or password."
+      "Invalid HR username or password."
     );
   };
 
@@ -113,60 +119,23 @@ function Login() {
     setLoading(true);
 
     try {
-      const loginResponse =
-        await API.post(
-          "/accounts/login/",
-          formData
-        );
-
-      const access =
-        loginResponse.data.access;
-
-      const refresh =
-        loginResponse.data.refresh;
-
-      localStorage.setItem(
-        "access",
-        access
+      const response = await API.post(
+        "/accounts/login/",
+        formData
       );
-
-      localStorage.setItem(
-        "refresh",
-        refresh
-      );
-
-      const profileResponse =
-        await API.get(
-          "/accounts/profile/"
-        );
-
-      const role =
-        profileResponse.data.role;
 
       saveAuthData({
-        access,
-        refresh,
-        role,
+        access: response.data.access,
+        refresh: response.data.refresh,
+        role: "hr",
       });
 
       const requestedPath =
         location.state?.from;
 
-      if (requestedPath) {
-        navigate(
-          requestedPath,
-          {
-            replace: true,
-          }
-        );
-
-        return;
-      }
-
       navigate(
-        role === "hr"
-          ? "/hr-dashboard"
-          : "/candidate-dashboard",
+        requestedPath ||
+          "/hr-dashboard",
         {
           replace: true,
         }
@@ -177,17 +146,7 @@ function Login() {
         requestError
       );
 
-      localStorage.removeItem(
-        "access"
-      );
-
-      localStorage.removeItem(
-        "refresh"
-      );
-
-      localStorage.removeItem(
-        "role"
-      );
+      clearAuthData();
 
       setError(
         getLoginError(
@@ -203,9 +162,14 @@ function Login() {
     <div className="container py-5">
       <div className="row justify-content-center">
         <div className="col-md-6 col-lg-5">
-          <h2 className="mb-4">
-            Login
+          <h2 className="mb-2">
+            HR Login
           </h2>
+
+          <p className="text-muted mb-4">
+            Candidates do not need to log in.
+            Use the application link shared by HR.
+          </p>
 
           {message && (
             <div className="alert alert-info">
@@ -239,9 +203,7 @@ function Login() {
                 value={
                   formData.username
                 }
-                onChange={
-                  handleChange
-                }
+                onChange={handleChange}
                 autoComplete="username"
                 required
                 disabled={loading}
@@ -264,9 +226,7 @@ function Login() {
                 value={
                   formData.password
                 }
-                onChange={
-                  handleChange
-                }
+                onChange={handleChange}
                 autoComplete="current-password"
                 required
                 disabled={loading}
@@ -280,7 +240,7 @@ function Login() {
             >
               {loading
                 ? "Logging in..."
-                : "Login"}
+                : "HR Login"}
             </button>
           </form>
         </div>
