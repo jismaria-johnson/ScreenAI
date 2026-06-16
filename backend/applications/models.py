@@ -250,6 +250,18 @@ class CandidateProgression(models.Model):
     stage = models.CharField(max_length=100)
     notes = models.TextField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="progression_updates",
+    )
+    updater_role = models.CharField(
+        max_length=20,
+        choices=(("hr", "HR"), ("admin", "Admin")),
+        default="hr",
+    )
 
     def __str__(self):
         name = self.application.candidate_name
@@ -265,8 +277,17 @@ from django.dispatch import receiver
 def handle_application_hired(sender, instance, **kwargs):
     if instance.application_status == "hired":
         if not instance.progressions.filter(stage="Hired").exists():
+            updated_by = getattr(instance, "_updated_by", None)
+            updater_role = "hr"
+            if updated_by:
+                if updated_by.is_superuser or updated_by.is_staff:
+                    updater_role = "admin"
+                else:
+                    updater_role = "hr"
             CandidateProgression.objects.create(
                 application=instance,
                 stage="Hired",
-                notes="Candidate was marked as Hired by HR."
+                notes="Candidate was marked as Hired by HR.",
+                updated_by=updated_by,
+                updater_role=updater_role,
             )

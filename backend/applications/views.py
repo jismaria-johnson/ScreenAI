@@ -297,6 +297,7 @@ class HRApplicationsView(
                 "pending",
                 "shortlisted",
                 "rejected",
+                "hired",
             ]
 
             if (
@@ -351,6 +352,7 @@ class UpdateApplicationStatusView(
             "pending",
             "shortlisted",
             "rejected",
+            "hired",
         ]
 
         if (
@@ -364,7 +366,7 @@ class UpdateApplicationStatusView(
         application.application_status = (
             new_status
         )
-
+        application._updated_by = request.user
         application.save(
             update_fields=[
                 "application_status",

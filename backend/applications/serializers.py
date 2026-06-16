@@ -130,6 +130,12 @@ class CandidateApplicationSerializer(
 
 
 class CandidateProgressionSerializer(serializers.ModelSerializer):
+    updated_by_username = serializers.CharField(
+        source="updated_by.username",
+        read_only=True,
+        default="",
+    )
+
     class Meta:
         model = CandidateProgression
         fields = [
@@ -137,6 +143,9 @@ class CandidateProgressionSerializer(serializers.ModelSerializer):
             "stage",
             "notes",
             "updated_at",
+            "updated_by",
+            "updated_by_username",
+            "updater_role",
         ]
         read_only_fields = fields
 
@@ -175,6 +184,16 @@ class HRApplicationSerializer(
 
     company_name = serializers.CharField(
         source="job.company_name",
+        read_only=True,
+    )
+
+    hr_user_id = serializers.IntegerField(
+        source="job.hr_user.id",
+        read_only=True,
+    )
+
+    hr_username = serializers.CharField(
+        source="job.hr_user.username",
         read_only=True,
     )
 
@@ -234,6 +253,8 @@ class HRApplicationSerializer(
             "job",
             "job_title",
             "company_name",
+            "hr_user_id",
+            "hr_username",
             "resume",
             "ai_score",
             "skills_score",

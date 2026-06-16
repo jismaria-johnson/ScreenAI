@@ -26,6 +26,10 @@ function HRApplications() {
   const [error, setError] =
     useState("");
 
+  const [progStage, setProgStage] = useState("Offer Extended");
+  const [progNotes, setProgNotes] = useState("");
+  const [updatingProg, setUpdatingProg] = useState(false);
+
   const [filters, setFilters] = useState({
     job: searchParams.get("job") || "",
     min_score:
@@ -188,27 +192,20 @@ function HRApplications() {
 
   const handleFilterChange = (event) => {
     const { name, value } = event.target;
-
-    setFilters((previousFilters) => ({
-      ...previousFilters,
+    const nextFilters = {
+      ...filters,
       [name]: value,
-    }));
-  };
+    };
+    setFilters(nextFilters);
 
-  const handleApplyFilters = () => {
     const urlParameters = {};
-
-    Object.entries(filters).forEach(
-      ([key, value]) => {
-        if (value) {
-          urlParameters[key] = value;
-        }
+    Object.entries(nextFilters).forEach(([key, val]) => {
+      if (val) {
+        urlParameters[key] = val;
       }
-    );
-
+    });
     setSearchParams(urlParameters);
-    setSelectedApplication(null);
-    fetchApplications(filters);
+    fetchApplications(nextFilters);
   };
 
   const handleClearFilters = () => {
@@ -258,6 +255,32 @@ function HRApplications() {
         requestError.response?.data?.detail ||
           "Failed to update application status."
       );
+    }
+  };
+
+  const handleAddProgression = async (e) => {
+    e.preventDefault();
+    if (!progStage.trim()) return;
+
+    setUpdatingProg(true);
+    setError("");
+
+    try {
+      const response = await API.post(
+        `/applications/admin/${selectedApplication.id}/progression/`,
+        { stage: progStage.trim(), notes: progNotes.trim() }
+      );
+      
+      setProgNotes("");
+      setSelectedApplication(response.data);
+      await fetchApplications(filters);
+    } catch (err) {
+      console.error("Failed to update progression:", err);
+      setError(
+        err.response?.data?.detail || "Failed to update candidate progression."
+      );
+    } finally {
+      setUpdatingProg(false);
     }
   };
 
@@ -569,19 +592,14 @@ function HRApplications() {
               <option value="rejected">
                 Rejected
               </option>
+              <option value="hired">
+                Hired
+              </option>
             </select>
           </div>
         </div>
 
         <div className="d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleApplyFilters}
-          >
-            Apply Filters
-          </button>
-
           <button
             type="button"
             className="btn btn-outline-secondary"
@@ -908,6 +926,90 @@ function HRApplications() {
             )}
           </div>
 
+          {selectedApplication.application_status === "hired" && (
+            <div className="card border-0 bg-white shadow-sm p-4 mb-3 rounded-3">
+              <h4 className="border-bottom pb-2 mb-3 fw-bold text-dark">Onboarding & Progression Stages</h4>
+              
+              {/* Form to add progression */}
+              <form onSubmit={handleAddProgression} className="bg-light p-3 rounded-3 mb-4">
+                <h5 className="fw-bold text-dark small mb-2">Record Onboarding Update</h5>
+                <div className="row g-2">
+                  <div className="col-sm-4">
+                    <select
+                      className="form-select form-select-sm"
+                      value={progStage}
+                      onChange={(e) => setProgStage(e.target.value)}
+                      disabled={updatingProg}
+                    >
+                      <option value="Offer Extended">Offer Extended</option>
+                      <option value="Onboarding">Onboarding</option>
+                      <option value="Active Employee">Active Employee</option>
+                      <option value="Promoted">Promoted</option>
+                      <option value="Resigned">Resigned</option>
+                      <option value="Terminated">Terminated</option>
+                    </select>
+                  </div>
+                  <div className="col-sm-6">
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Orientation details, contract signed, etc."
+                      value={progNotes}
+                      onChange={(e) => setProgNotes(e.target.value)}
+                      disabled={updatingProg}
+                    />
+                  </div>
+                  <div className="col-sm-2">
+                    <button
+                      type="submit"
+                      className="btn btn-sm btn-primary w-100 fw-bold"
+                      disabled={updatingProg || !progStage.trim()}
+                    >
+                      {updatingProg ? "Saving..." : "Add Stage"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              {/* Timeline */}
+              <h5 className="fw-bold text-dark small mb-3">Progression Timeline</h5>
+              <div className="position-relative ps-4">
+                <div
+                  className="position-absolute h-100 border-start border-2 border-secondary-subtle"
+                  style={{ left: "9px", top: "0" }}
+                />
+                
+                {!selectedApplication.progressions || selectedApplication.progressions.length === 0 ? (
+                  <div className="text-muted small">No progression stages logged yet.</div>
+                ) : (
+                  selectedApplication.progressions.map((log) => (
+                    <div key={log.id} className="position-relative mb-3 small text-start">
+                      <div
+                        className="position-absolute bg-success rounded-circle"
+                        style={{
+                          left: "-35px",
+                          top: "4px",
+                          width: "10px",
+                          height: "10px",
+                        }}
+                      />
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <strong className="text-dark">{log.stage}</strong>
+                        <span className="text-muted" style={{ fontSize: "11px" }}>
+                          {new Date(log.updated_at).toLocaleString()}
+                        </span>
+                      </div>
+                      {log.notes && <div className="text-secondary mb-1">{log.notes}</div>}
+                      <div className="text-muted" style={{ fontSize: "10px" }}>
+                        Recorded by: {log.updated_by_username ? `@${log.updated_by_username}` : "System"} ({log.updater_role === "admin" ? "Admin" : "HR"})
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="d-flex gap-2 flex-wrap mt-3">
             <a
               href={getResumeUrl(
@@ -933,6 +1035,23 @@ function HRApplications() {
             <button
               type="button"
               className="btn btn-success"
+              onClick={() =>
+                updateStatus(
+                  selectedApplication.id,
+                  "hired"
+                )
+              }
+              disabled={
+                selectedApplication.application_status ===
+                "hired"
+              }
+            >
+              🎉 Hire Candidate
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-primary"
               onClick={() =>
                 updateStatus(
                   selectedApplication.id,

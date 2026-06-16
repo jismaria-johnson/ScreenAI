@@ -504,3 +504,88 @@ class AdminPanelTestCase(APITestCase):
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["progressions"]), 3)
+
+    def test_admin_toggle_hr_active_status(self):
+        url = f"/api/applications/admin/hrs/{self.hr_user.id}/toggle/"
+
+        # 1. Authenticated as HR -> Forbidden
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Authenticated as Admin -> OK (deactivates HR)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_active"])
+
+        # Check in DB that is_active is false
+        self.hr_user.refresh_from_db()
+        self.assertFalse(self.hr_user.is_active)
+
+        # 3. Toggle back to active
+        response = self.client.patch(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_active"])
+        self.hr_user.refresh_from_db()
+        self.assertTrue(self.hr_user.is_active)
+
+        # 4. Admin tries to deactivate superuser -> Bad Request
+        superuser_toggle_url = f"/api/applications/admin/hrs/{self.admin_user.id}/toggle/"
+        response = self.client.patch(superuser_toggle_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_admin_system_activity_log(self):
+        url = "/api/applications/admin/activity-log/"
+
+        # 1. Authenticated as HR -> Forbidden
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Authenticated as Admin -> OK
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should have at least the job creation activity and application progression activity
+        self.assertTrue(len(response.data) > 0)
+        self.assertEqual(response.data[0]["type"], "progression_updated")
+
+    def test_admin_progression_override(self):
+        # Create a progression log
+        prog = self.hired_app.progressions.first()
+        url = f"/api/applications/admin/progression/{prog.id}/"
+        payload = {
+            "stage": "Corrected Onboarding Stage",
+            "notes": "Admin updated orientation details."
+        }
+
+        # 1. Non-admin (HR) tries to edit -> Forbidden
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Admin edits -> OK
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify in database
+        prog.refresh_from_db()
+        self.assertEqual(prog.stage, "Corrected Onboarding Stage")
+        self.assertEqual(prog.notes, "Admin updated orientation details.")
+        self.assertEqual(prog.updated_by, self.admin_user)
+        self.assertEqual(prog.updater_role, "admin")
+
+        # 3. Non-admin (HR) tries to delete -> Forbidden
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 4. Admin deletes -> OK
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify in database that progression log was deleted
+        self.assertFalse(self.hired_app.progressions.filter(id=prog.id).exists())
