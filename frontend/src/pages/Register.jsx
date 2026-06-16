@@ -163,7 +163,7 @@ function Register() {
       );
 
       alert(
-        "HR account created successfully."
+        "HR account registered successfully."
       );
 
       navigate("/login", {
@@ -192,13 +192,11 @@ function Register() {
           <div className="card shadow-sm">
             <div className="card-body p-4">
               <h2 className="mb-2">
-                Create HR Account
+                Register as HR
               </h2>
 
               <p className="text-muted mb-4">
-                Candidate accounts are not required.
-                Candidates apply through public links
-                shared by HR.
+                Registration is available for HR recruiters only. System administrator accounts are created by the project owner. Candidates do not need accounts.
               </p>
 
               {error && (
@@ -375,13 +373,13 @@ function Register() {
                   disabled={submitting}
                 >
                   {submitting
-                    ? "Creating account..."
-                    : "Create HR Account"}
+                    ? "Registering..."
+                    : "Register"}
                 </button>
               </form>
 
               <p className="text-center mt-3 mb-0">
-                Already have an HR account?{" "}
+                Already have an account?{" "}
                 <Link to="/login">
                   Login
                 </Link>

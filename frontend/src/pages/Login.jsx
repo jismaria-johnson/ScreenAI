@@ -56,9 +56,11 @@ function Login() {
       searchParams.get("session") ===
       "expired"
     ) {
-      setMessage(
-        "Your session expired. Please log in again."
-      );
+      setTimeout(() => {
+        setMessage(
+          "Your session expired. Please log in again."
+        );
+      }, 0);
     }
   }, [
     navigate,
@@ -106,7 +108,7 @@ function Login() {
     }
 
     return (
-      "Invalid HR username or password."
+      "Invalid username or password."
     );
   };
 
@@ -166,9 +168,9 @@ function Login() {
       <div className="row justify-content-center">
         <div className="col-md-6 col-lg-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold mb-2">Portal Login</h2>
+            <h2 className="fw-bold mb-2">Login</h2>
             <p className="text-muted small">
-              Recruiter & Admin Access Control
+              HR recruiters and system administrators can sign in here. Candidates do not need accounts and apply through shared application links.
             </p>
           </div>
 
@@ -249,7 +251,7 @@ function Login() {
                     Logging in...
                   </>
                 ) : (
-                  "Log In"
+                  "Login"
                 )}
               </button>
             </form>

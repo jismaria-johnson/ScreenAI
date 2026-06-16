@@ -9,14 +9,6 @@ function JobList() {
   const role = localStorage.getItem("role");
   const token = localStorage.getItem("access");
 
-  useEffect(() => {
-    fetchJobs();
-
-    if (token && role === "candidate") {
-      fetchMyApplications();
-    }
-  }, []);
-
   const fetchJobs = async () => {
     try {
       const response = await API.get("/jobs/");
@@ -35,6 +27,16 @@ function JobList() {
       console.log(error);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchJobs();
+
+    if (token && role === "candidate") {
+      fetchMyApplications();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="container py-5">

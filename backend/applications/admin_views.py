@@ -11,18 +11,15 @@ from jobs.models import Job
 
 class IsAdminUser(permissions.BasePermission):
     """
-    Allows access only to superusers or users with 'admin' role in their Profile.
+    Allows access only to superusers or staff users.
     """
     def has_permission(self, request, view):
         return (
             request.user
             and request.user.is_authenticated
             and (
-                request.user.is_superuser
-                or (
-                    hasattr(request.user, "profile")
-                    and request.user.profile.role == "admin"
-                )
+                request.user.is_staff
+                or request.user.is_superuser
             )
         )
 
@@ -36,10 +33,7 @@ class IsAdminOrHiringHR(permissions.BasePermission):
             return False
         
         # Admin check
-        if request.user.is_superuser or (
-            hasattr(request.user, "profile")
-            and request.user.profile.role == "admin"
-        ):
+        if request.user.is_staff or request.user.is_superuser:
             return True
             
         # Hiring HR check

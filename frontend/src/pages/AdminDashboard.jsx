@@ -15,10 +15,6 @@ function AdminDashboard() {
   const [notes, setNotes] = useState("");
   const [updating, setUpdating] = useState(false);
 
-  useEffect(() => {
-    fetchAdminData();
-  }, []);
-
   const fetchAdminData = async () => {
     setLoading(true);
     setError("");
@@ -44,6 +40,12 @@ function AdminDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchAdminData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddProgression = async (e) => {
     e.preventDefault();
@@ -368,7 +370,7 @@ function AdminDashboard() {
                   />
 
                   {selectedCandidate.progressions && selectedCandidate.progressions.length > 0 ? (
-                    selectedCandidate.progressions.map((log, index) => (
+                    selectedCandidate.progressions.map((log) => (
                       <div key={log.id} className="position-relative mb-4">
                         {/* Timeline point */}
                         <div

@@ -10,10 +10,6 @@ function MyJobs() {
   const [copiedJobId, setCopiedJobId] = useState(null);
   const [togglingFormId, setTogglingFormId] = useState(null);
 
-  useEffect(() => {
-    fetchJobs();
-  }, []);
-
   const fetchJobs = async () => {
     setLoading(true);
     setError("");
@@ -28,6 +24,11 @@ function MyJobs() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchJobs();
+  }, []);
 
   const copyApplicationLink = (token) => {
     const link = `http://localhost:5173/apply/public/${token}`;

@@ -131,13 +131,11 @@ class HRTokenObtainPairSerializer(
             None,
         )
 
-        role = "hr"
-        if profile:
-            role = profile.role
-        elif self.user.is_superuser:
+        if self.user.is_superuser or self.user.is_staff:
             role = "admin"
-
-        if role not in ["hr", "admin"]:
+        elif profile and profile.role == "hr":
+            role = "hr"
+        else:
             raise serializers.ValidationError(
                 "Only HR or Admin accounts can log in."
             )

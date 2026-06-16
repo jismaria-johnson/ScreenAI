@@ -18,10 +18,6 @@ function Profile() {
   const [error, setError] =
     useState("");
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
   const fetchProfile = async () => {
     setLoading(true);
     setError("");
@@ -46,6 +42,11 @@ function Profile() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchProfile();
+  }, []);
 
   const displayValue = (
     value,
@@ -175,31 +176,7 @@ function Profile() {
                     </p>
                   </div>
                 </div>
-
-                {profile.role === "candidate" && (
-                  <div className="col-12 mb-3">
-                    <div className="border rounded p-3">
-                      <small className="text-muted">
-                        Education
-                      </small>
-
-                      <p className="mb-0 fw-semibold">
-                        {displayValue(
-                          profile.education
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
-
-              {profile.role === "candidate" && (
-                <div className="alert alert-info mt-2 mb-0">
-                  Skills, work experience and previous
-                  companies are obtained from each
-                  uploaded resume during AI screening.
-                </div>
-              )}
             </div>
           </div>
         </div>

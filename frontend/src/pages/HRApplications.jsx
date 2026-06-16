@@ -40,76 +40,6 @@ function HRApplications() {
       searchParams.get("status") || "",
   });
 
-  useEffect(() => {
-    initializePage();
-  }, []);
-
-  const initializePage = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const [
-        jobsResponse,
-        allApplicationsResponse,
-      ] = await Promise.all([
-        API.get("/jobs/"),
-        API.get("/applications/hr/"),
-      ]);
-
-      setJobs(jobsResponse.data);
-      setAllApplications(
-        allApplicationsResponse.data
-      );
-
-      await fetchApplications(filters);
-    } catch (requestError) {
-      console.error(
-        "Failed to initialise HR applications:",
-        requestError
-      );
-
-      setError(
-        requestError.response?.data?.detail ||
-          "Failed to load candidate applications."
-      );
-
-      setLoading(false);
-    }
-  };
-
-  const companyOptions = useMemo(() => {
-    const companyMap = new Map();
-
-    allApplications.forEach((application) => {
-      if (!application.worked_companies) {
-        return;
-      }
-
-      application.worked_companies
-        .split(",")
-        .map((company) => company.trim())
-        .filter(Boolean)
-        .forEach((company) => {
-          const normalisedName =
-            company.toLowerCase();
-
-          if (!companyMap.has(normalisedName)) {
-            companyMap.set(
-              normalisedName,
-              company
-            );
-          }
-        });
-    });
-
-    return Array.from(
-      companyMap.values()
-    ).sort((first, second) =>
-      first.localeCompare(second)
-    );
-  }, [allApplications]);
-
   const fetchApplications = async (
     selectedFilters = filters
   ) => {
@@ -181,6 +111,80 @@ function HRApplications() {
       setLoading(false);
     }
   };
+
+  const initializePage = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [
+        jobsResponse,
+        allApplicationsResponse,
+      ] = await Promise.all([
+        API.get("/jobs/"),
+        API.get("/applications/hr/"),
+      ]);
+
+      setJobs(jobsResponse.data);
+      setAllApplications(
+        allApplicationsResponse.data
+      );
+
+      await fetchApplications(filters);
+    } catch (requestError) {
+      console.error(
+        "Failed to initialise HR applications:",
+        requestError
+      );
+
+      setError(
+        requestError.response?.data?.detail ||
+          "Failed to load candidate applications."
+      );
+
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    initializePage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const companyOptions = useMemo(() => {
+    const companyMap = new Map();
+
+    allApplications.forEach((application) => {
+      if (!application.worked_companies) {
+        return;
+      }
+
+      application.worked_companies
+        .split(",")
+        .map((company) => company.trim())
+        .filter(Boolean)
+        .forEach((company) => {
+          const normalisedName =
+            company.toLowerCase();
+
+          if (!companyMap.has(normalisedName)) {
+            companyMap.set(
+              normalisedName,
+              company
+            );
+          }
+        });
+    });
+
+    return Array.from(
+      companyMap.values()
+    ).sort((first, second) =>
+      first.localeCompare(second)
+    );
+  }, [allApplications]);
+
+
 
   const handleFilterChange = (event) => {
     const { name, value } = event.target;

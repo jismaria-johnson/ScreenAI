@@ -30,10 +30,6 @@ function EditProfile() {
   const [error, setError] =
     useState("");
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
   const fetchProfile = async () => {
     setLoading(true);
     setError("");
@@ -73,6 +69,11 @@ function EditProfile() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchProfile();
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -298,36 +299,6 @@ function EditProfile() {
                   />
                 </div>
 
-                {formData.role === "candidate" && (
-                  <div className="mb-3">
-                    <label
-                      htmlFor="education"
-                      className="form-label"
-                    >
-                      Education
-                    </label>
-
-                    <textarea
-                      id="education"
-                      name="education"
-                      className="form-control"
-                      rows="4"
-                      value={formData.education}
-                      onChange={handleChange}
-                      placeholder={
-                        "Example: B.Tech Computer Science"
-                      }
-                      disabled={saving}
-                    />
-                  </div>
-                )}
-
-                <div className="alert alert-info">
-                  Skills, work experience and
-                  previous companies are extracted
-                  automatically from the resume when
-                  applying for a job.
-                </div>
 
                 <div className="d-flex gap-2">
                   <button

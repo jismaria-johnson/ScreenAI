@@ -8,18 +8,12 @@ AI assists the initial screening process. The final hiring decision remains with
 
 ## Features
 
-### Candidate
+### Candidate Flow
 
-- Candidate registration and JWT login
-- Protected candidate routes
-- Browse open jobs
-- Apply by uploading a PDF resume
+- Apply by uploading a PDF resume through secure public links
 - PDF type and size validation
 - Duplicate-application prevention
-- View application status
-- Candidate dashboard
-- View and edit profile
-- Automatic JWT access-token refresh
+- No account registration or login required
 
 ### HR
 
@@ -116,12 +110,13 @@ ScreenAI/
 
 ### Authentication
 
-ScreenAI supports Candidate and HR accounts using JWT authentication.
+ScreenAI supports Recruiter (HR) and System Administrator (Admin) accounts using JWT authentication. Both roles share a unified Login interface. HR users can register directly, whereas Admin accounts are created via Django's administrative CLI.
 
 The frontend includes role-based protected routes:
 
-- Candidates cannot access HR pages.
-- HR users cannot access candidate-only pages.
+- HR users cannot access administrative dashboards or APIs.
+- Admin users are restricted from HR job-creation pages.
+- Candidates apply through public links without accounts.
 - Expired access tokens are refreshed automatically using the refresh token.
 - Invalid or expired sessions redirect to the login page.
 
@@ -205,6 +200,11 @@ POST  /api/accounts/token/refresh/
 GET   /api/accounts/profile/
 PATCH /api/accounts/profile/
 PUT   /api/accounts/profile/
+
+# Admin Management API
+GET   /api/applications/admin/hrs/
+GET   /api/applications/admin/hired-candidates/
+POST  /api/applications/admin/<id>/progression/
 ```
 
 ### Jobs
@@ -290,6 +290,12 @@ Apply migrations:
 python manage.py migrate
 ```
 
+Create an administrator account:
+
+```powershell
+python manage.py createsuperuser
+```
+
 Check the Django configuration:
 
 ```powershell
@@ -339,25 +345,30 @@ http://localhost:5173/
 ### Candidate Flow
 
 ```text
-Register
-→ Login
-→ Browse open jobs
-→ Select a job
-→ Upload PDF resume
-→ AI screening
-→ Track application status
+Access secure public job application link
+→ Upload PDF resume and fill details
+→ AI screening processing
 ```
 
 ### HR Flow
 
 ```text
-Register
-→ Login
+Register HR Account
+→ Login via shared Login page
 → Create and manage jobs
-→ Review candidate applications
-→ Filter applicants
-→ Inspect AI results and resumes
+→ Share public job token links with candidates
+→ Review applications and AI scores/recommendations
 → Shortlist, reject, or mark pending
+```
+
+### Admin Flow
+
+```text
+Create superuser / staff user via CLI
+→ Login via shared Login page
+→ Redirected to Admin Dashboard
+→ Monitor registered HR profiles and job creation metrics
+→ Track hired candidate progression pipeline
 ```
 
 ## Important Notes

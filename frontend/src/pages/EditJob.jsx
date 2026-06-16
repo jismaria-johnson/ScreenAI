@@ -23,10 +23,6 @@ function EditJob() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetchJob();
-  }, []);
-
   const fetchJob = async () => {
     try {
       const response = await API.get(`/jobs/${jobId}/`);
@@ -53,6 +49,12 @@ function EditJob() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchJob();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;

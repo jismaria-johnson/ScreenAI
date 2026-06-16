@@ -9,10 +9,6 @@ function HRDashboard() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
   const fetchDashboardData = async () => {
     try {
       const [
@@ -37,6 +33,11 @@ function HRDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchDashboardData();
+  }, []);
 
   const totalJobs = jobs.length;
 

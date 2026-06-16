@@ -8,10 +8,6 @@ function CandidateDashboard() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
   const fetchDashboardData = async () => {
     try {
       const [profileResponse, applicationsResponse] =
@@ -31,6 +27,11 @@ function CandidateDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchDashboardData();
+  }, []);
 
   const totalApplications = applications.length;
 

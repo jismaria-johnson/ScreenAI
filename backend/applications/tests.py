@@ -404,7 +404,7 @@ class AdminPanelTestCase(APITestCase):
         from accounts.models import Profile
         
         # Admin User
-        self.admin_user = User.objects.create_user(username="admin_user", password="password", email="admin@test.com")
+        self.admin_user = User.objects.create_superuser(username="admin_user", password="password", email="admin@test.com")
         self.admin_profile = Profile.objects.create(user=self.admin_user, role="admin")
 
         # HR User

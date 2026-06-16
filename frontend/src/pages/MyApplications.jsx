@@ -5,10 +5,6 @@ function MyApplications() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchApplications();
-  }, []);
-
   const fetchApplications = async () => {
     try {
       const response = await API.get("/applications/my/");
@@ -19,6 +15,11 @@ function MyApplications() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchApplications();
+  }, []);
 
   return (
     <div className="container py-5">

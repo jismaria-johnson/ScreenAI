@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import "../styles/PublicApplyJob.css";
@@ -22,10 +22,6 @@ export default function PublicApplyJob() {
   });
 
   const [formErrors, setFormErrors] = useState({});
-
-  useEffect(() => {
-    fetchJobDetails();
-  }, [token]);
 
   const fetchJobDetails = async () => {
     try {
@@ -51,6 +47,12 @@ export default function PublicApplyJob() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    fetchJobDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -165,8 +167,8 @@ export default function PublicApplyJob() {
         const responseData = err.response.data;
         if (typeof responseData === "object") {
           setError(
-            Object.entries(responseData)
-              .map(([key, value]) => {
+            Object.values(responseData)
+              .map((value) => {
                 if (Array.isArray(value)) {
                   return `${value.join(" ")}`;
                 }
