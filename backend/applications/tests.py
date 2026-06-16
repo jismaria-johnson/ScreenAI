@@ -481,10 +481,10 @@ class AdminPanelTestCase(APITestCase):
             "notes": "Finished orientation training."
         }
 
-        # 1. Anonymous user -> Forbidden
+        # 1. Anonymous user -> Unauthorized
         self.client.force_authenticate(user=None)
         response = self.client.post(url, payload)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
         # 2. Other HR (not hiring manager) -> Forbidden
         self.client.force_authenticate(user=self.other_hr_user)
