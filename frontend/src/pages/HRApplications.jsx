@@ -340,6 +340,42 @@ function HRApplications() {
     return recommendation;
   };
 
+  const renderScoreComponent = (label, score, maxVal, explanation) => {
+    if (score === null || score === undefined) {
+      return (
+        <div className="mb-3">
+          <strong>{label}:</strong> <span className="text-muted">Not evaluated</span>
+        </div>
+      );
+    }
+    return (
+      <div className="mb-3">
+        <div className="d-flex justify-content-between align-items-center mb-1">
+          <span><strong>{label}:</strong> {score} / {maxVal}</span>
+          <span className="badge bg-secondary">{Math.round((score / maxVal) * 100)}%</span>
+        </div>
+        <div className="progress mb-2" style={{ height: "8px" }}>
+          <div
+            className="progress-bar bg-success"
+            role="progressbar"
+            style={{ width: `${(score / maxVal) * 100}%` }}
+            aria-valuenow={score}
+            aria-valuemin="0"
+            aria-valuemax={maxVal}
+          />
+        </div>
+        {explanation && (
+          <p
+            className="text-muted small mb-0 ms-2"
+            style={{ borderLeft: "2px solid #dee2e6", paddingLeft: "8px" }}
+          >
+            {explanation}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="container-fluid px-4 py-5">
       <h2 className="mb-4">
@@ -689,7 +725,7 @@ function HRApplications() {
             />
           </div>
 
-          <div className="row">
+          <div className="row g-4">
             <div className="col-md-6">
               <p>
                 <strong>Email:</strong>{" "}
@@ -721,7 +757,8 @@ function HRApplications() {
                   Previous Companies:
                 </strong>{" "}
                 {displayValue(
-                  selectedApplication.worked_companies
+                  selectedApplication.worked_companies,
+                  "None listed"
                 )}
               </p>
 
@@ -734,15 +771,29 @@ function HRApplications() {
                   "Not evaluated"
                 )}
               </p>
+
+              <p>
+                <strong>
+                  Project Summary:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.project_summary,
+                  "Not evaluated"
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Education Summary:
+                </strong>{" "}
+                {displayValue(
+                  selectedApplication.education_summary,
+                  "Not evaluated"
+                )}
+              </p>
             </div>
 
             <div className="col-md-6">
-              <p>
-                <strong>AI Score:</strong>{" "}
-                {selectedApplication.ai_score ??
-                  "Not evaluated"}
-              </p>
-
               <p className="text-capitalize">
                 <strong>
                   AI Recommendation:
@@ -796,6 +847,62 @@ function HRApplications() {
               "Not evaluated"
             )}
           </p>
+
+          <hr />
+
+          <div className="card border-0 bg-light p-4 mb-3">
+            <h4 className="border-bottom pb-2 mb-4">AI Score Breakdown</h4>
+            {selectedApplication.skills_score === null ? (
+              <p className="text-muted mb-0">Not evaluated</p>
+            ) : (
+              <div className="row">
+                <div className="col-md-6 pe-md-4">
+                  {renderScoreComponent(
+                    "Skills Match",
+                    selectedApplication.skills_score,
+                    30,
+                    selectedApplication.skills_reason
+                  )}
+                  {renderScoreComponent(
+                    "Relevant Experience",
+                    selectedApplication.experience_score,
+                    25,
+                    selectedApplication.experience_score_reason
+                  )}
+                  {renderScoreComponent(
+                    "Projects",
+                    selectedApplication.projects_score,
+                    20,
+                    selectedApplication.projects_score_reason
+                  )}
+                </div>
+                <div className="col-md-6 ps-md-4">
+                  {renderScoreComponent(
+                    "Previous Role Fit",
+                    selectedApplication.company_role_score,
+                    10,
+                    selectedApplication.company_role_score_reason
+                  )}
+                  {renderScoreComponent(
+                    "Education & Certifications",
+                    selectedApplication.education_score,
+                    5,
+                    selectedApplication.education_score_reason
+                  )}
+                  {renderScoreComponent(
+                    "Overall Job Relevance",
+                    selectedApplication.relevance_score,
+                    10,
+                    selectedApplication.relevance_score_reason
+                  )}
+                </div>
+                <div className="col-12 border-top pt-3 mt-3 d-flex justify-content-between align-items-center bg-white rounded p-3 shadow-sm">
+                  <h5 className="mb-0"><strong>Final AI Score:</strong></h5>
+                  <h3 className="mb-0 text-primary"><strong>{selectedApplication.ai_score} / 100</strong></h3>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="d-flex gap-2 flex-wrap mt-3">
             <a

@@ -62,9 +62,37 @@ def format_worked_companies(value):
     return ""
 
 
+def parse_and_clamp_score(value, max_val):
+    try:
+        val = float(value)
+        if val != val or val == float('inf') or val == float('-inf'):
+            return 0
+        val = int(round(val))
+        return max(0, min(val, max_val))
+    except (TypeError, ValueError):
+        return 0
+
+
 def get_not_evaluated_result(message):
     return {
         "ai_score": None,
+        "skills_score": None,
+        "experience_score": None,
+        "projects_score": None,
+        "company_role_score": None,
+        "education_score": None,
+        "relevance_score": None,
+
+        "skills_reason": message,
+        "experience_score_reason": message,
+        "projects_score_reason": message,
+        "company_role_score_reason": message,
+        "education_score_reason": message,
+        "relevance_score_reason": message,
+
+        "project_summary": message,
+        "education_summary": message,
+
         "matched_skills": "",
         "missing_skills": "",
         "experience_match": (
@@ -134,37 +162,74 @@ Candidate Resume:
 Return ONLY valid JSON in this exact format:
 
 {{
-  "ai_score": 0,
+  "skills_score": 0,
+  "skills_reason": "Short explanation",
+
+  "experience_score": 0,
+  "experience_reason": "Short explanation",
+
+  "projects_score": 0,
+  "projects_reason": "Short explanation",
+
+  "company_role_score": 0,
+  "company_role_reason": "Short explanation",
+
+  "education_score": 0,
+  "education_reason": "Short explanation",
+
+  "relevance_score": 0,
+  "relevance_reason": "Short explanation",
+
   "matched_skills": "skill1, skill2",
   "missing_skills": "skill3, skill4",
-  "experience_match": "short explanation",
+
   "total_experience_years": 0,
   "worked_companies": ["Company One", "Company Two"],
-  "experience_summary": "short summary of the candidate's work experience",
-  "ai_feedback": "short HR-friendly feedback",
+  "experience_summary": "Short experience summary",
+
+  "project_summary": "Short summary of relevant projects",
+  "education_summary": "Short education and certification summary",
+
+  "ai_feedback": "Short HR-friendly overall feedback",
   "recommendation": "shortlist"
 }}
 
-Rules:
+Scoring rules:
 
-- ai_score must be an integer from 0 to 100.
-- recommendation must be one of:
-  shortlist, review, reject.
-- total_experience_years must be numeric.
-- Return total_experience_years rounded to one decimal place.
-- Count only professional work experience.
-- Do not count academic project duration as work experience.
-- Internships may be included only when clearly mentioned as work experience.
-- worked_companies must contain only company or organisation names found in the resume.
-- Do not include job portals, technologies, colleges or project names as companies.
-- If no company is found, return an empty list.
+1. Skills Match (0 to 30 points):
+- Evaluate required skills explicitly present in the resume, depth and practical use of the skills, missing required skills, and closely related alternatives.
+- Do not award full marks merely because skill names appear once.
+
+2. Relevant Experience (0 to 25 points):
+- Evaluate total professional experience, relevance to the job, responsibilities performed, and alignment with the required experience range.
+- Do not automatically penalize an experienced candidate only because they exceed the preferred range. If the candidate is overqualified, mention it in the explanation, but score based mainly on relevance.
+- Do not count academic-project duration as professional work experience.
+
+3. Projects (0 to 20 points):
+- Evaluate project relevance to the job, technologies used, practical implementation, complexity, measurable outcomes, and ownership and contribution.
+- Do not invent missing project information.
+
+4. Previous Role and Company Relevance (0 to 10 points):
+- Evaluate similarity of previous roles, responsibilities, industry or domain relevance, technologies and work performed.
+- Do not give extra points merely because a company is famous. Company reputation must not influence the score.
+
+5. Education and Certifications (0 to 5 points):
+- Evaluate education relevance, technical certifications, and job-related training.
+- Do not over-penalize candidates whose practical experience compensates for education.
+
+6. Overall Job Relevance (0 to 10 points):
+- Evaluate overall alignment with the complete job description, clarity of evidence in the resume, consistency of the candidate’s profile, and suitability for the role.
+
+Constraints:
+- Return ONLY valid JSON. Do not include markdown or JSON code fences.
+- All reason fields must be short, clear, and professional.
+- recommendation must be one of: "shortlist", "review", "reject".
+- total_experience_years must be numeric. Return total_experience_years rounded to one decimal place.
+- Count only professional work experience. Internships may be included only when clearly mentioned as work experience.
+- worked_companies must contain only company or organisation names found in the resume. If no company is found, return an empty list: [].
 - If the candidate is a fresher, return total_experience_years as 0.
-- If no professional experience is found, use:
-  "No previous company experience found."
-  as the experience_summary.
-- Do not invent companies or experience.
-- Do not include markdown.
-- Do not include JSON code fences.
+- If no professional experience is found, use "No previous company experience found." as the experience_summary.
+- Do not invent skills, projects, companies, experience, education, or certifications.
 """
 
     try:
@@ -184,19 +249,22 @@ Rules:
             result_text
         )
 
-        ai_score = int(
-            result.get(
-                "ai_score",
-                0,
-            )
-        )
+        # Parse and clamp component scores
+        skills_score = parse_and_clamp_score(result.get("skills_score", 0), 30)
+        experience_score = parse_and_clamp_score(result.get("experience_score", 0), 25)
+        projects_score = parse_and_clamp_score(result.get("projects_score", 0), 20)
+        company_role_score = parse_and_clamp_score(result.get("company_role_score", 0), 10)
+        education_score = parse_and_clamp_score(result.get("education_score", 0), 5)
+        relevance_score = parse_and_clamp_score(result.get("relevance_score", 0), 10)
 
-        ai_score = max(
-            0,
-            min(
-                ai_score,
-                100,
-            ),
+        # Calculate final score in Python
+        ai_score = (
+            skills_score
+            + experience_score
+            + projects_score
+            + company_role_score
+            + education_score
+            + relevance_score
         )
 
         recommendation = (
@@ -264,6 +332,23 @@ Rules:
 
         return {
             "ai_score": ai_score,
+            "skills_score": skills_score,
+            "experience_score": experience_score,
+            "projects_score": projects_score,
+            "company_role_score": company_role_score,
+            "education_score": education_score,
+            "relevance_score": relevance_score,
+
+            "skills_reason": clean_text_value(result.get("skills_reason", "")),
+            "experience_score_reason": clean_text_value(result.get("experience_reason", "")),
+            "projects_score_reason": clean_text_value(result.get("projects_reason", "")),
+            "company_role_score_reason": clean_text_value(result.get("company_role_reason", "")),
+            "education_score_reason": clean_text_value(result.get("education_reason", "")),
+            "relevance_score_reason": clean_text_value(result.get("relevance_reason", "")),
+
+            "project_summary": clean_text_value(result.get("project_summary", "")),
+            "education_summary": clean_text_value(result.get("education_summary", "")),
+
             "matched_skills": (
                 clean_text_value(
                     result.get(
@@ -283,7 +368,7 @@ Rules:
             "experience_match": (
                 clean_text_value(
                     result.get(
-                        "experience_match",
+                        "experience_reason",
                         "",
                     )
                 )
