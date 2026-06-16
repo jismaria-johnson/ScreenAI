@@ -165,87 +165,101 @@ function Login() {
     <div className="container py-5">
       <div className="row justify-content-center">
         <div className="col-md-6 col-lg-5">
-          <h2 className="mb-2">
-            HR Login
-          </h2>
-
-          <p className="text-muted mb-4">
-            Candidates do not need to log in.
-            Use the application link shared by HR.
-          </p>
+          <div className="text-center mb-4">
+            <h2 className="fw-bold mb-2">Portal Login</h2>
+            <p className="text-muted small">
+              Recruiter & Admin Access Control
+            </p>
+          </div>
 
           {message && (
-            <div className="alert alert-info">
+            <div className="alert alert-info border-0 shadow-sm">
               {message}
             </div>
           )}
 
           {error && (
-            <div className="alert alert-danger">
+            <div className="alert alert-danger border-0 shadow-sm">
               {error}
             </div>
           )}
 
-          <form
-            onSubmit={handleSubmit}
-            className="card p-4 shadow-sm"
-          >
-            <div className="mb-3">
-              <label
-                htmlFor="username"
-                className="form-label"
-              >
-                Username
-              </label>
+          <div className="card border-0 shadow-lg p-4 rounded-4">
+            <form onSubmit={handleSubmit}>
+              <div className="mb-3">
+                <label
+                  htmlFor="username"
+                  className="form-label fw-semibold"
+                >
+                  Username
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text bg-light border-end-0">
+                    👤
+                  </span>
+                  <input
+                    id="username"
+                    type="text"
+                    name="username"
+                    className="form-control bg-light border-start-0"
+                    placeholder="Enter username"
+                    value={formData.username}
+                    onChange={handleChange}
+                    autoComplete="username"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
 
-              <input
-                id="username"
-                type="text"
-                name="username"
-                className="form-control"
-                value={
-                  formData.username
-                }
-                onChange={handleChange}
-                autoComplete="username"
-                required
+              <div className="mb-4">
+                <label
+                  htmlFor="password"
+                  className="form-label fw-semibold"
+                >
+                  Password
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text bg-light border-end-0">
+                    🔒
+                  </span>
+                  <input
+                    id="password"
+                    type="password"
+                    name="password"
+                    className="form-control bg-light border-start-0"
+                    placeholder="Enter password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    autoComplete="current-password"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary w-100 py-2 fw-semibold rounded-3 shadow"
                 disabled={loading}
-              />
-            </div>
-
-            <div className="mb-3">
-              <label
-                htmlFor="password"
-                className="form-label"
               >
-                Password
-              </label>
+                {loading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Logging in...
+                  </>
+                ) : (
+                  "Log In"
+                )}
+              </button>
+            </form>
+          </div>
 
-              <input
-                id="password"
-                type="password"
-                name="password"
-                className="form-control"
-                value={
-                  formData.password
-                }
-                onChange={handleChange}
-                autoComplete="current-password"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-            >
-              {loading
-                ? "Logging in..."
-                : "HR Login"}
-            </button>
-          </form>
+          <div className="card bg-light border-0 p-3 mt-4 text-center rounded-3">
+            <p className="text-muted small mb-0">
+              <strong>Are you a candidate?</strong> Candidates do not need to register or log in. Please use the unique application link shared directly by the hiring manager.
+            </p>
+          </div>
         </div>
       </div>
     </div>

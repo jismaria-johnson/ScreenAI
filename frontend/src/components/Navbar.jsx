@@ -101,14 +101,14 @@ function Navbar() {
               className="nav-link text-white"
               to="/login"
             >
-              HR Login
+              Login
             </Link>
 
             <Link
               className="btn btn-outline-light btn-sm"
               to="/register"
             >
-              HR Register
+              Register
             </Link>
           </>
         )}
