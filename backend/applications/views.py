@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import generics
 from rest_framework.exceptions import (
     ValidationError,
@@ -11,6 +12,7 @@ from rest_framework.response import (
 )
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import ScopedRateThrottle
 
 from ai_engine.gemini_scorer import (
     score_resume_with_gemini,
@@ -324,6 +326,7 @@ class UpdateApplicationStatusView(
         IsHRUser,
     ]
 
+    @transaction.atomic
     def patch(
         self,
         request,
@@ -331,7 +334,7 @@ class UpdateApplicationStatusView(
     ):
         try:
             application = (
-                Application.objects.get(
+                Application.objects.select_for_update().get(
                     pk=pk,
                     job__hr_user=(
                         request.user
@@ -414,6 +417,9 @@ class PublicApplicationCreateView(
         MultiPartParser,
         FormParser,
     ]
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "public_application_submit"
 
     def get_job_by_token(self, token):
         from jobs.models import Job

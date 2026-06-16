@@ -49,6 +49,28 @@ def get_list_env(
     ]
 
 
+def get_throttle_env(
+    name,
+    default="10/minute",
+):
+    value = os.getenv(name, "").strip()
+    if not value:
+        return default
+    if "/" not in value:
+        return default
+    parts = value.split("/")
+    if len(parts) != 2:
+        return default
+    num, period = parts
+    try:
+        int(num.strip())
+    except ValueError:
+        return default
+    if period.strip().lower() not in ["second", "minute", "hour", "day"]:
+        return default
+    return value
+
+
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "development-only-secret-key",
@@ -195,6 +217,17 @@ REST_FRAMEWORK = {
             "JWTAuthentication"
         ),
     ),
+    # Use ScopedRateThrottle to rate limit only specific views/endpoints.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    # Custom rates for public application submissions.
+    # Note: IP-based anonymous throttling can affect multiple users sharing the same network/IP address.
+    "DEFAULT_THROTTLE_RATES": {
+        "public_application_submit": get_throttle_env(
+            "THROTTLE_RATE_PUBLIC_APP_SUBMIT", "10/minute"
+        ),
+    },
 }
 
 

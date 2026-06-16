@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import API from "../api/axiosConfig";
+import Toast from "../components/Toast";
+import ConfirmModal from "../components/ConfirmModal";
 
 const getPlaceholderForStage = (stageName) => {
   switch (stageName) {
@@ -32,20 +34,58 @@ function AdminDashboard() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   
+  // Custom toast and confirm modal states
+  const [toast, setToast] = useState({ message: "", type: "success" });
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModal({
+      isOpen: false,
+      title: "",
+      message: "",
+      onConfirm: null,
+    });
+  };
+
   // Dashboard Tabs
   const [activeTab, setActiveTab] = useState("overview");
 
   // Recruiter Controls
   const [searchHR, setSearchHR] = useState("");
+  const [debouncedSearchHR, setDebouncedSearchHR] = useState("");
   const [togglingHrId, setTogglingHrId] = useState(null);
 
   // Candidate Controls
   const [searchCandidate, setSearchCandidate] = useState("");
+  const [debouncedSearchCandidate, setDebouncedSearchCandidate] = useState("");
   const [filterStage, setFilterStage] = useState("all");
   const [filterHRId, setFilterHRId] = useState("all");
   const [stage, setStage] = useState("Onboarding");
   const [notes, setNotes] = useState("");
   const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchHR(searchHR);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchHR]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchCandidate(searchCandidate);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchCandidate]);
   
   // Progression Log Editing Controls
   const [editingLogId, setEditingLogId] = useState(null);
@@ -92,29 +132,34 @@ function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleToggleHRActive = async (hrId, username, currentStatus) => {
+  const handleToggleHRActive = (hrId, username, currentStatus) => {
     const action = currentStatus ? "suspend" : "activate";
-    const confirmed = window.confirm(
-      `Are you sure you want to ${action} recruiter account @${username}?`
-    );
-    if (!confirmed) return;
-
-    setTogglingHrId(hrId);
-    setError("");
-    setSuccess("");
-    try {
-      const response = await API.patch(`/applications/admin/hrs/${hrId}/toggle/`);
-      const updatedStatus = response.data.is_active;
-      setSuccess(`Recruiter @${username} has been successfully ${updatedStatus ? "activated" : "suspended"}!`);
-      await fetchAdminData();
-    } catch (err) {
-      console.error("Failed to toggle recruiter active status:", err);
-      setError(
-        err.response?.data?.detail || "Failed to update recruiter active status."
-      );
-    } finally {
-      setTogglingHrId(null);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: `${currentStatus ? "Suspend" : "Activate"} Recruiter`,
+      message: `Are you sure you want to ${action} recruiter account @${username}?`,
+      onConfirm: async () => {
+        closeConfirmModal();
+        setTogglingHrId(hrId);
+        setError("");
+        setSuccess("");
+        try {
+          const response = await API.patch(`/applications/admin/hrs/${hrId}/toggle/`);
+          const updatedStatus = response.data.is_active;
+          const msg = `Recruiter @${username} has been successfully ${updatedStatus ? "activated" : "suspended"}!`;
+          setSuccess(msg);
+          showToast(msg, "success");
+          await fetchAdminData();
+        } catch (err) {
+          console.error("Failed to toggle recruiter active status:", err);
+          const errMsg = err.response?.data?.detail || "Failed to update recruiter active status.";
+          setError(errMsg);
+          showToast(errMsg, "error");
+        } finally {
+          setTogglingHrId(null);
+        }
+      }
+    });
   };
 
   const handleAddProgression = async (e) => {
@@ -131,7 +176,9 @@ function AdminDashboard() {
         { stage: stage.trim(), notes: notes.trim() }
       );
       
-      setSuccess(`Progression stage updated to "${stage}"!`);
+      const msg = `Progression stage updated to "${stage}"!`;
+      setSuccess(msg);
+      showToast(msg, "success");
       setNotes("");
       
       // Refresh candidates list and selected candidate details
@@ -139,9 +186,9 @@ function AdminDashboard() {
       setSelectedCandidate(response.data);
     } catch (err) {
       console.error("Failed to update progression:", err);
-      setError(
-        err.response?.data?.detail || "Failed to update candidate progression."
-      );
+      const errMsg = err.response?.data?.detail || "Failed to update candidate progression.";
+      setError(errMsg);
+      showToast(errMsg, "error");
     } finally {
       setUpdating(false);
     }
@@ -160,41 +207,50 @@ function AdminDashboard() {
         { stage: editStage.trim(), notes: editNotes.trim() }
       );
       
-      setSuccess(`Progression log updated successfully!`);
+      const msg = "Progression log updated successfully!";
+      setSuccess(msg);
+      showToast(msg, "success");
       setEditingLogId(null);
       await fetchAdminData();
       setSelectedCandidate(response.data);
     } catch (err) {
       console.error("Failed to edit progression log:", err);
-      setError(
-        err.response?.data?.detail || "Failed to edit progression log."
-      );
+      const errMsg = err.response?.data?.detail || "Failed to edit progression log.";
+      setError(errMsg);
+      showToast(errMsg, "error");
     } finally {
       setUpdating(false);
     }
   };
 
-  const handleDeleteProgression = async (logId) => {
-    const confirmed = window.confirm("Are you sure you want to permanently delete this progression stage?");
-    if (!confirmed) return;
+  const handleDeleteProgression = (logId) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Progression Stage",
+      message: "Are you sure you want to permanently delete this progression stage?",
+      onConfirm: async () => {
+        closeConfirmModal();
+        setUpdating(true);
+        setError("");
+        setSuccess("");
 
-    setUpdating(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const response = await API.delete(`/applications/admin/progression/${logId}/`);
-      setSuccess(`Progression stage deleted successfully.`);
-      await fetchAdminData();
-      setSelectedCandidate(response.data);
-    } catch (err) {
-      console.error("Failed to delete progression log:", err);
-      setError(
-        err.response?.data?.detail || "Failed to delete progression log."
-      );
-    } finally {
-      setUpdating(false);
-    }
+        try {
+          const response = await API.delete(`/applications/admin/progression/${logId}/`);
+          const msg = "Progression stage deleted successfully.";
+          setSuccess(msg);
+          showToast(msg, "success");
+          await fetchAdminData();
+          setSelectedCandidate(response.data);
+        } catch (err) {
+          console.error("Failed to delete progression log:", err);
+          const errMsg = err.response?.data?.detail || "Failed to delete progression log.";
+          setError(errMsg);
+          showToast(errMsg, "error");
+        } finally {
+          setUpdating(false);
+        }
+      }
+    });
   };
 
   const getCandidateName = (application) => {
@@ -261,7 +317,7 @@ function AdminDashboard() {
     const name = [hr.first_name, hr.last_name].filter(Boolean).join(" ").toLowerCase();
     const username = (hr.username || "").toLowerCase();
     const email = (hr.email || "").toLowerCase();
-    const search = searchHR.toLowerCase();
+    const search = debouncedSearchHR.toLowerCase();
     return name.includes(search) || username.includes(search) || email.includes(search);
   });
 
@@ -269,7 +325,7 @@ function AdminDashboard() {
     const name = getCandidateName(candidate).toLowerCase();
     const title = (candidate.job_title || "").toLowerCase();
     const company = (candidate.company_name || "").toLowerCase();
-    const search = searchCandidate.toLowerCase();
+    const search = debouncedSearchCandidate.toLowerCase();
     const matchesSearch = name.includes(search) || title.includes(search) || company.includes(search);
     
     const matchesStage = filterStage === "all" || getLatestStage(candidate) === filterStage;
@@ -540,7 +596,10 @@ function AdminDashboard() {
                     <button
                       type="button"
                       className="btn btn-outline-secondary btn-sm"
-                      onClick={() => setSearchHR("")}
+                      onClick={() => {
+                        setSearchHR("");
+                        setDebouncedSearchHR("");
+                      }}
                     >
                       Clear
                     </button>
@@ -797,6 +856,7 @@ function AdminDashboard() {
                         setFilterHRId("all");
                         setFilterStage("all");
                         setSearchCandidate("");
+                        setDebouncedSearchCandidate("");
                       }}
                     >
                       Clear
@@ -1093,6 +1153,24 @@ function AdminDashboard() {
             )}
           </div>
         </div>
+      )}
+
+      {confirmModal.isOpen && (
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={closeConfirmModal}
+        />
+      )}
+
+      {toast.message && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ message: "", type: "success" })}
+        />
       )}
     </div>
   );

@@ -189,9 +189,16 @@ class ApplicationEvaluationFlowTestCase(APITestCase):
             content_type="application/pdf"
         )
 
+    @patch("pdfplumber.open")
     @patch("ai_engine.resume_parser.extract_text_from_pdf")
     @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
-    def test_public_application_submission_success(self, mock_scorer, mock_parser):
+    def test_public_application_submission_success(self, mock_scorer, mock_parser, mock_pdf_open):
+        # Set up mock for pdfplumber validation
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
         # Set up mocks
         mock_parser.return_value = "Python Developer with 3 years of experience in Django."
         mock_scorer.return_value = {
@@ -247,9 +254,16 @@ class ApplicationEvaluationFlowTestCase(APITestCase):
         self.assertEqual(application.education_summary, "B.S. in CS")
         self.assertEqual(application.recommendation, "shortlist")
 
+    @patch("pdfplumber.open")
     @patch("ai_engine.resume_parser.extract_text_from_pdf")
     @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
-    def test_public_application_submission_gemini_failure(self, mock_scorer, mock_parser):
+    def test_public_application_submission_gemini_failure(self, mock_scorer, mock_parser, mock_pdf_open):
+        # Set up mock for pdfplumber validation
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
         # Set up mocks for Gemini failure
         mock_parser.return_value = "Python Developer."
         mock_scorer.return_value = {
@@ -708,4 +722,353 @@ class HRStatusTransitionTestCase(APITestCase):
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.app.progressions.count(), 2) # "Hired" and "Offer Extended"
+
+
+class PublicApplicationValidationAndThrottlingTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        self.hr_user = User.objects.create_user(username="hr_user_val", password="password", email="hr_val@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Backend Developer",
+            company_name="ScreenCorp",
+            job_description="Django expert",
+            required_skills="Python",
+            required_experience="2 years",
+            status="open",
+            application_form_enabled=True
+        )
+        self.url = f"/api/applications/public/{self.job.application_token}/"
+
+    @patch("pdfplumber.open")
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_valid_pdf_under_5mb_accepted(self, mock_scorer, mock_parser, mock_pdf_open):
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
+        mock_parser.return_value = "Valid resume content."
+        mock_scorer.return_value = {
+            "ai_score": 80,
+            "skills_score": 20,
+            "experience_score": 20,
+            "projects_score": 15,
+            "company_role_score": 10,
+            "education_score": 5,
+            "relevance_score": 10,
+            "skills_reason": "",
+            "experience_score_reason": "",
+            "projects_score_reason": "",
+            "company_role_score_reason": "",
+            "education_score_reason": "",
+            "relevance_score_reason": "",
+            "project_summary": "",
+            "education_summary": "",
+            "matched_skills": "",
+            "missing_skills": "",
+            "experience_match": "",
+            "total_experience_years": 2.0,
+            "worked_companies": "",
+            "experience_summary": "",
+            "ai_feedback": "",
+            "recommendation": "shortlist"
+        }
+        valid_pdf = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%dummy pdf content\n%%EOF", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Alice Green",
+            "candidate_email": "alice@test.com",
+            "candidate_phone": "1112223333",
+            "resume": valid_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Application.objects.filter(candidate_email="alice@test.com").exists())
+
+    def test_file_above_5mb_rejected(self):
+        large_content = b"%PDF-1.4\n" + b"x" * (5 * 1024 * 1024 + 100) + b"\n%%EOF"
+        large_pdf = SimpleUploadedFile("resume.pdf", large_content, content_type="application/pdf")
+        payload = {
+            "candidate_name": "Big File",
+            "candidate_email": "big@test.com",
+            "candidate_phone": "1112223333",
+            "resume": large_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Resume size must not exceed 5 MB.", str(response.data["resume"]))
+        self.assertFalse(Application.objects.filter(candidate_email="big@test.com").exists())
+
+    def test_non_pdf_renamed_with_pdf_rejected(self):
+        fake_pdf = SimpleUploadedFile("resume.pdf", b"This is just normal text, not pdf", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Fake PDF",
+            "candidate_email": "fake@test.com",
+            "candidate_phone": "1112223333",
+            "resume": fake_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("The uploaded file is not a valid PDF.", str(response.data["resume"]))
+
+    def test_invalid_pdf_signature_rejected(self):
+        invalid_pdf = SimpleUploadedFile("resume.pdf", b"NOT_A_PDF_SIGNATURE", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Invalid Sign",
+            "candidate_email": "invalid@test.com",
+            "candidate_phone": "1112223333",
+            "resume": invalid_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("The uploaded file is not a valid PDF.", str(response.data["resume"]))
+
+    def test_corrupt_pdf_rejected(self):
+        corrupt_pdf = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\ncorrupt content without pdf structure", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Corrupt Candidate",
+            "candidate_email": "corrupt@test.com",
+            "candidate_phone": "1112223333",
+            "resume": corrupt_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("The uploaded PDF file is corrupt or invalid.", str(response.data["resume"]))
+        self.assertFalse(Application.objects.filter(candidate_email="corrupt@test.com").exists())
+
+    @patch("pdfplumber.open")
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_image_only_or_textless_valid_pdf_fallback(self, mock_scorer, mock_parser, mock_pdf_open):
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
+        mock_parser.return_value = ""
+        valid_pdf = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%dummy pdf content\n%%EOF", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Textless Candidate",
+            "candidate_email": "textless@test.com",
+            "candidate_phone": "1112223333",
+            "resume": valid_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        app = Application.objects.get(candidate_email="textless@test.com")
+        self.assertEqual(app.recommendation, "not_evaluated")
+        self.assertIsNone(app.ai_score)
+        mock_scorer.assert_not_called()
+        
+        # Verify the application remains visible to the owning HR and the resume is retained for manual review
+        self.client.force_authenticate(user=self.hr_user)
+        hr_response = self.client.get("/api/applications/hr/")
+        self.assertEqual(hr_response.status_code, status.HTTP_200_OK)
+        # Ensure our new application is visible to HR
+        hr_app_list = [a for a in hr_response.data if a["candidate_email_db"] == "textless@test.com"]
+        self.assertEqual(len(hr_app_list), 1)
+        self.assertEqual(hr_app_list[0]["recommendation"], "not_evaluated")
+        self.assertTrue("resume" in hr_app_list[0]["resume"] and hr_app_list[0]["resume"].endswith(".pdf"))
+        # Verify actual file contents in storage can be retrieved
+        self.assertTrue(app.resume.name.endswith(".pdf"))
+        self.assertTrue(app.resume.size > 0)
+
+
+    @patch("pdfplumber.open")
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_public_submission_throttle_applied(self, mock_scorer, mock_parser, mock_pdf_open):
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
+        mock_parser.return_value = "Throttle resume content."
+        mock_scorer.return_value = {
+            "ai_score": 80,
+            "skills_score": 20,
+            "experience_score": 20,
+            "projects_score": 15,
+            "company_role_score": 10,
+            "education_score": 5,
+            "relevance_score": 10,
+            "skills_reason": "",
+            "experience_score_reason": "",
+            "projects_score_reason": "",
+            "company_role_score_reason": "",
+            "education_score_reason": "",
+            "relevance_score_reason": "",
+            "project_summary": "",
+            "education_summary": "",
+            "matched_skills": "",
+            "missing_skills": "",
+            "experience_match": "",
+            "total_experience_years": 2.0,
+            "worked_companies": "",
+            "experience_summary": "",
+            "ai_feedback": "",
+            "recommendation": "shortlist"
+        }
+
+        from rest_framework.throttling import ScopedRateThrottle
+        from django.test import override_settings
+        from django.core.cache import cache
+
+        orig_rate = ScopedRateThrottle.THROTTLE_RATES.get("public_application_submit")
+        ScopedRateThrottle.THROTTLE_RATES["public_application_submit"] = "2/minute"
+        
+        valid_pdf = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%dummy pdf content\n%%EOF", content_type="application/pdf")
+        payload = {
+            "candidate_name": "Throttle Candidate",
+            "candidate_email": "throttle@test.com",
+            "candidate_phone": "1112223333",
+            "resume": valid_pdf
+        }
+        
+        try:
+            with override_settings(
+                CACHES={
+                    "default": {
+                        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                    }
+                }
+            ):
+                cache.clear()
+
+                response = self.client.post(self.url, payload, format="multipart")
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                
+                valid_pdf.seek(0)
+                payload["candidate_email"] = "throttle2@test.com"
+                response = self.client.post(self.url, payload, format="multipart")
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                
+                valid_pdf.seek(0)
+                payload["candidate_email"] = "throttle3@test.com"
+                response = self.client.post(self.url, payload, format="multipart")
+                self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        finally:
+            if orig_rate is not None:
+                ScopedRateThrottle.THROTTLE_RATES["public_application_submit"] = orig_rate
+            else:
+                ScopedRateThrottle.THROTTLE_RATES.pop("public_application_submit", None)
+
+    def test_unrelated_endpoints_not_affected_by_throttle(self):
+        self.client.force_authenticate(user=self.hr_user)
+        for _ in range(5):
+            response = self.client.get("/api/jobs/")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch("pdfplumber.open")
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_valid_pdf_with_octet_stream_mime_accepted(self, mock_scorer, mock_parser, mock_pdf_open):
+        from unittest.mock import MagicMock
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf_open.return_value.__enter__.return_value = mock_pdf
+
+        mock_parser.return_value = "Valid resume with generic mime type."
+        mock_scorer.return_value = {
+            "ai_score": 70,
+            "skills_score": 20,
+            "experience_score": 15,
+            "projects_score": 15,
+            "company_role_score": 10,
+            "education_score": 5,
+            "relevance_score": 5,
+            "skills_reason": "",
+            "experience_score_reason": "",
+            "projects_score_reason": "",
+            "company_role_score_reason": "",
+            "education_score_reason": "",
+            "relevance_score_reason": "",
+            "project_summary": "",
+            "education_summary": "",
+            "matched_skills": "",
+            "missing_skills": "",
+            "experience_match": "",
+            "total_experience_years": 2.0,
+            "worked_companies": "",
+            "experience_summary": "",
+            "ai_feedback": "",
+            "recommendation": "review"
+        }
+        valid_pdf = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%dummy pdf content\n%%EOF", content_type="application/octet-stream")
+        payload = {
+            "candidate_name": "Octet Stream Candidate",
+            "candidate_email": "octet@test.com",
+            "candidate_phone": "1112223333",
+            "resume": valid_pdf
+        }
+        response = self.client.post(self.url, payload, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Application.objects.filter(candidate_email="octet@test.com").exists())
+
+
+
+class PlacementTransactionTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        self.hr_user = User.objects.create_user(username="hr_trans", password="password", email="hr_trans@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Python Dev",
+            company_name="ScreenCorp",
+            job_description="Django role",
+            required_skills="Python",
+            required_experience="2 years",
+            status="open"
+        )
+        self.resume_file = SimpleUploadedFile(
+            "resume.pdf",
+            b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+            content_type="application/pdf"
+        )
+        self.app = Application.objects.create(
+            job=self.job,
+            candidate_name="Trans Candidate",
+            candidate_email="trans@test.com",
+            resume=self.resume_file,
+            application_status="shortlisted"
+        )
+        self.url = f"/api/applications/{self.app.id}/status/"
+
+    def test_successful_hire_creates_state_and_one_initial_progression(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(self.url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.application_status, "hired")
+        self.assertEqual(self.app.progressions.count(), 1)
+        self.assertEqual(self.app.progressions.first().stage, "Hired")
+
+    @patch("applications.models.CandidateProgression.objects.create")
+    def test_connected_write_failure_rolls_back_hired_status(self, mock_create):
+        mock_create.side_effect = Exception("Simulated database write error")
+        
+        self.client.force_authenticate(user=self.hr_user)
+        self.client.raise_request_exception = False
+        response = self.client.patch(self.url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.application_status, "shortlisted")
+        self.assertEqual(self.app.progressions.count(), 0)
+
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_hiring_does_not_invoke_gemini_or_pdf_work(self, mock_scorer, mock_parser):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(self.url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify that changing status to hired does NOT call any AI engine or PDF extraction methods
+        mock_scorer.assert_not_called()
+        mock_parser.assert_not_called()
+
 

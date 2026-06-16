@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import Toast from "../components/Toast";
 import "../styles/PublicApplyJob.css";
 
 export default function PublicApplyJob() {
@@ -12,6 +13,7 @@ export default function PublicApplyJob() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
+  const [toast, setToast] = useState({ message: "", type: "success" });
 
   const [formData, setFormData] = useState({
     candidate_name: "",
@@ -159,28 +161,51 @@ export default function PublicApplyJob() {
       );
 
       if (response.status === 201) {
+        setToast({ message: "Application submitted successfully.", type: "success" });
         setSubmitted(true);
       }
     } catch (err) {
-      if (err.response?.data) {
-        // Handle various error responses
+      if (err.response?.status === 429) {
+        const msg = "Too many attempts have been made. Please wait before trying again.";
+        setToast({ message: msg, type: "error" });
+        setError(msg);
+      } else if (err.response?.status === 400 && err.response?.data) {
         const responseData = err.response.data;
         if (typeof responseData === "object") {
-          setError(
-            Object.values(responseData)
-              .map((value) => {
-                if (Array.isArray(value)) {
-                  return `${value.join(" ")}`;
-                }
-                return `${value}`;
-              })
-              .join(" ")
-          );
+          const newFormErrors = {};
+          let hasFieldErrors = false;
+          let globalErrorMsg = "";
+
+          Object.entries(responseData).forEach(([key, val]) => {
+            const valStr = Array.isArray(val) ? val.join(" ") : String(val);
+            if (["candidate_name", "candidate_email", "candidate_phone", "candidate_education", "resume"].includes(key)) {
+              newFormErrors[key] = valStr;
+              hasFieldErrors = true;
+            } else {
+              if (globalErrorMsg) globalErrorMsg += " ";
+              globalErrorMsg += valStr;
+            }
+          });
+
+          if (hasFieldErrors) {
+            setFormErrors(newFormErrors);
+            const msg = "Please correct the errors in the form.";
+            setToast({ message: msg, type: "error" });
+            setError(globalErrorMsg || msg);
+          } else {
+            const msg = globalErrorMsg || "Failed to submit application.";
+            setToast({ message: msg, type: "error" });
+            setError(msg);
+          }
         } else {
-          setError(responseData);
+          const msg = String(responseData) || "Failed to submit application.";
+          setToast({ message: msg, type: "error" });
+          setError(msg);
         }
       } else {
-        setError("Failed to submit application. Please try again.");
+        const msg = err.response?.data?.detail || "Failed to submit application. Please try again.";
+        setToast({ message: msg, type: "error" });
+        setError(msg);
       }
     } finally {
       setSubmitting(false);
@@ -215,6 +240,13 @@ export default function PublicApplyJob() {
   if (submitted) {
     return (
       <div className="public-apply-container">
+        {toast.message && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast({ message: "", type: "success" })}
+          />
+        )}
         <div className="success-card">
           <div className="success-icon">✓</div>
           <h2>Application Submitted Successfully!</h2>
@@ -230,6 +262,13 @@ export default function PublicApplyJob() {
 
   return (
     <div className="public-apply-container">
+      {toast.message && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ message: "", type: "success" })}
+        />
+      )}
       {error && <div className="alert alert-danger">{error}</div>}
 
       <div className="job-header">

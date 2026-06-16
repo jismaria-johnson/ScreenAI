@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import API from "../api/axiosConfig";
+import Toast from "../components/Toast";
+import ConfirmModal from "../components/ConfirmModal";
 
 const getPlaceholderForStage = (stageName) => {
   switch (stageName) {
@@ -60,6 +62,27 @@ function HRApplications() {
 
   const [error, setError] =
     useState("");
+
+  const [toast, setToast] = useState({ message: "", type: "success" });
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModal({
+      isOpen: false,
+      title: "",
+      message: "",
+      onConfirm: null,
+    });
+  };
 
   const [progStage, setProgStage] = useState("Offer Extended");
   const [progNotes, setProgNotes] = useState("");
@@ -259,38 +282,58 @@ function HRApplications() {
     fetchApplications(emptyFilters);
   };
 
-  const updateStatus = async (
+  const updateStatus = (
     applicationId,
     newStatus
   ) => {
-    setError("");
-
-    try {
-      await API.patch(
-        `/applications/${applicationId}/status/`,
-        {
-          application_status: newStatus,
-        }
-      );
-
-      await fetchApplications(filters);
-
-      const allResponse = await API.get(
-        "/applications/hr/"
-      );
-
-      setAllApplications(allResponse.data);
-    } catch (requestError) {
-      console.error(
-        "Failed to update application status:",
-        requestError
-      );
-
-      setError(
-        requestError.response?.data?.detail ||
-          "Failed to update application status."
-      );
+    const candidateName = selectedApplication ? getCandidateName(selectedApplication) : "this candidate";
+    let message = `Are you sure you want to change the status of ${candidateName} to ${newStatus}?`;
+    let title = "Update Status";
+    
+    if (newStatus === "hired") {
+      title = "Hire Candidate";
+      message = `Are you sure you want to hire ${candidateName}? This will move them to onboarding and progression tracking.`;
+    } else if (newStatus === "rejected") {
+      title = "Reject Candidate";
+      message = `Are you sure you want to reject ${candidateName}?`;
     }
+    
+    setConfirmModal({
+      isOpen: true,
+      title: title,
+      message: message,
+      onConfirm: async () => {
+        closeConfirmModal();
+        setError("");
+        try {
+          await API.patch(
+            `/applications/${applicationId}/status/`,
+            {
+              application_status: newStatus,
+            }
+          );
+          
+          const msg = `Candidate status successfully updated to ${newStatus}!`;
+          showToast(msg, "success");
+
+          await fetchApplications(filters);
+
+          const allResponse = await API.get(
+            "/applications/hr/"
+          );
+
+          setAllApplications(allResponse.data);
+        } catch (requestError) {
+          console.error(
+            "Failed to update application status:",
+            requestError
+          );
+          const errMsg = requestError.response?.data?.detail || "Failed to update application status.";
+          setError(errMsg);
+          showToast(errMsg, "error");
+        }
+      }
+    });
   };
 
   const handleAddProgression = async (e) => {
@@ -306,14 +349,16 @@ function HRApplications() {
         { stage: progStage.trim(), notes: progNotes.trim() }
       );
       
+      const msg = `Progression stage updated to "${progStage}"!`;
+      showToast(msg, "success");
       setProgNotes("");
       setSelectedApplication(response.data);
       await fetchApplications(filters);
     } catch (err) {
       console.error("Failed to update progression:", err);
-      setError(
-        err.response?.data?.detail || "Failed to update candidate progression."
-      );
+      const errMsg = err.response?.data?.detail || "Failed to update candidate progression.";
+      setError(errMsg);
+      showToast(errMsg, "error");
     } finally {
       setUpdatingProg(false);
     }
@@ -1142,6 +1187,23 @@ function HRApplications() {
             )}
           </div>
         </div>
+      )}
+      {confirmModal.isOpen && (
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={closeConfirmModal}
+        />
+      )}
+
+      {toast.message && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ message: "", type: "success" })}
+        />
       )}
     </div>
   );

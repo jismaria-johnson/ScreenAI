@@ -44,6 +44,7 @@ def validate_pdf_resume(resume):
     allowed_content_types = [
         "application/pdf",
         "application/x-pdf",
+        "application/octet-stream",
     ]
 
     if (
@@ -56,12 +57,22 @@ def validate_pdf_resume(resume):
         )
 
     try:
+        resume.seek(0)
         first_bytes = resume.read(5)
         resume.seek(0)
 
         if first_bytes != b"%PDF-":
             raise serializers.ValidationError(
                 "The uploaded file is not a valid PDF."
+            )
+
+        import pdfplumber
+        try:
+            with pdfplumber.open(resume) as pdf:
+                _ = pdf.pages
+        except Exception:
+            raise serializers.ValidationError(
+                "The uploaded PDF file is corrupt or invalid."
             )
 
     except serializers.ValidationError:
@@ -71,6 +82,11 @@ def validate_pdf_resume(resume):
         raise serializers.ValidationError(
             "The uploaded PDF could not be validated."
         )
+    finally:
+        try:
+            resume.seek(0)
+        except Exception:
+            pass
 
     return resume
 
