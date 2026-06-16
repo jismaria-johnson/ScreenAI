@@ -17,6 +17,7 @@ import MyJobs from "./pages/MyJobs";
 import Profile from "./pages/Profile";
 import PublicApplyJob from "./pages/PublicApplyJob";
 import Register from "./pages/Register";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   return (
@@ -51,6 +52,17 @@ function App() {
               allowedRoles={["hr"]}
             >
               <HRDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin-dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={["admin"]}
+            >
+              <AdminDashboard />
             </ProtectedRoute>
           }
         />

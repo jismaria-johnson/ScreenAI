@@ -65,6 +65,10 @@ export const getDashboardPath = () => {
     return "/hr-dashboard";
   }
 
+  if (role === "admin") {
+    return "/admin-dashboard";
+  }
+
   if (role === "candidate") {
     return "/candidate-dashboard";
   }

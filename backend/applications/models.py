@@ -9,6 +9,7 @@ class Application(models.Model):
         ("pending", "Pending"),
         ("shortlisted", "Shortlisted"),
         ("rejected", "Rejected"),
+        ("hired", "Hired"),
     )
 
     RECOMMENDATION_CHOICES = (
@@ -238,3 +239,34 @@ class Application(models.Model):
         self.ai_feedback = ai_result["ai_feedback"]
         self.recommendation = ai_result["recommendation"]
         self.save()
+
+
+class CandidateProgression(models.Model):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="progressions",
+    )
+    stage = models.CharField(max_length=100)
+    notes = models.TextField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        name = self.application.candidate_name
+        if not name and self.application.candidate:
+            name = self.application.candidate.username
+        return f"{name or 'Unknown'} - {self.stage}"
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Application)
+def handle_application_hired(sender, instance, **kwargs):
+    if instance.application_status == "hired":
+        if not instance.progressions.filter(stage="Hired").exists():
+            CandidateProgression.objects.create(
+                application=instance,
+                stage="Hired",
+                notes="Candidate was marked as Hired by HR."
+            )

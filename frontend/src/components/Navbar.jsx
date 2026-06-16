@@ -6,6 +6,7 @@ import {
 import {
   clearAuthData,
   getAccessToken,
+  getUserRole,
 } from "../utils/auth";
 
 function Navbar() {
@@ -21,15 +22,16 @@ function Navbar() {
     });
   };
 
+  const isUserAdmin = getUserRole() === "admin";
+  const userHomePath = token
+    ? (isUserAdmin ? "/admin-dashboard" : "/hr-dashboard")
+    : "/";
+
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
       <Link
         className="navbar-brand fw-bold"
-        to={
-          token
-            ? "/hr-dashboard"
-            : "/"
-        }
+        to={userHomePath}
       >
         ScreenAI
       </Link>
@@ -37,44 +39,53 @@ function Navbar() {
       <div className="ms-auto d-flex gap-3 align-items-center flex-wrap">
         <Link
           className="nav-link text-white"
-          to={
-            token
-              ? "/hr-dashboard"
-              : "/"
-          }
+          to={userHomePath}
         >
           Home
         </Link>
 
         {token ? (
           <>
-            <Link
-              className="nav-link text-white"
-              to="/my-jobs"
-            >
-              My Jobs
-            </Link>
+            {isUserAdmin ? (
+              <>
+                <Link
+                  className="nav-link text-white"
+                  to="/admin-dashboard"
+                >
+                  Admin Dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  className="nav-link text-white"
+                  to="/my-jobs"
+                >
+                  My Jobs
+                </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/add-job"
-            >
-              Add Job
-            </Link>
+                <Link
+                  className="nav-link text-white"
+                  to="/add-job"
+                >
+                  Add Job
+                </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/hr-applications"
-            >
-              Applications
-            </Link>
+                <Link
+                  className="nav-link text-white"
+                  to="/hr-applications"
+                >
+                  Applications
+                </Link>
 
-            <Link
-              className="nav-link text-white"
-              to="/profile"
-            >
-              Profile
-            </Link>
+                <Link
+                  className="nav-link text-white"
+                  to="/profile"
+                >
+                  Profile
+                </Link>
+              </>
+            )}
 
             <button
               type="button"

@@ -397,3 +397,110 @@ class ApplicationEvaluationFlowTestCase(APITestCase):
         response = self.client.get("/api/applications/hr/", {"company": "Google"})
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["id"], app_high.id)
+
+
+class AdminPanelTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        
+        # Admin User
+        self.admin_user = User.objects.create_user(username="admin_user", password="password", email="admin@test.com")
+        self.admin_profile = Profile.objects.create(user=self.admin_user, role="admin")
+
+        # HR User
+        self.hr_user = User.objects.create_user(username="hr_user", password="password", email="hr@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+
+        # Other HR User
+        self.other_hr_user = User.objects.create_user(username="other_hr_user", password="password", email="other@test.com")
+        self.other_hr_profile = Profile.objects.create(user=self.other_hr_user, role="hr")
+
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="DevOps Engineer",
+            company_name="PythonCorp",
+            job_description="Looking for DevOps engineers",
+            required_skills="Docker",
+            required_experience="1 year",
+            status="open"
+        )
+
+        self.resume_file = SimpleUploadedFile(
+            "resume.pdf",
+            b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+            content_type="application/pdf"
+        )
+
+        # Hired Candidate application
+        self.hired_app = Application.objects.create(
+            job=self.job,
+            candidate_name="Hired Candidate",
+            candidate_email="hired@test.com",
+            resume=self.resume_file,
+            application_status="hired"
+        )
+
+    def test_admin_hr_list_permissions(self):
+        # Authenticated as HR -> Forbidden (403)
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get("/api/applications/admin/hrs/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Authenticated as Admin -> OK (200)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/applications/admin/hrs/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2) # both hr_user and other_hr_user should be returned
+
+        # Check job count and hired count
+        hr_data = next(hr for hr in response.data if hr["id"] == self.hr_user.id)
+        self.assertEqual(hr_data["jobs_count"], 1)
+        self.assertEqual(hr_data["hired_count"], 1)
+
+    def test_admin_hired_candidates_permissions(self):
+        # Authenticated as HR -> Forbidden (403)
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get("/api/applications/admin/hired-candidates/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Authenticated as Admin -> OK (200)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/applications/admin/hired-candidates/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["candidate_name"], "Hired Candidate")
+
+    def test_candidate_progression_creation(self):
+        # Verify that handle_application_hired signal auto-created the initial "Hired" stage
+        self.assertEqual(self.hired_app.progressions.count(), 1)
+        self.assertEqual(self.hired_app.progressions.first().stage, "Hired")
+
+        url = f"/api/applications/admin/{self.hired_app.id}/progression/"
+        payload = {
+            "stage": "Onboarding Completed",
+            "notes": "Finished orientation training."
+        }
+
+        # 1. Anonymous user -> Forbidden
+        self.client.force_authenticate(user=None)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Other HR (not hiring manager) -> Forbidden
+        self.client.force_authenticate(user=self.other_hr_user)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Hiring HR -> OK
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["progressions"]), 2)
+        self.assertEqual(response.data["progressions"][1]["stage"], "Onboarding Completed")
+
+        # 4. Admin user -> OK
+        self.client.force_authenticate(user=self.admin_user)
+        payload["stage"] = "Active Employee"
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["progressions"]), 3)

@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from jobs.models import Job
 
-from .models import Application
+from .models import Application, CandidateProgression
 
 
 MAX_RESUME_SIZE = 5 * 1024 * 1024
@@ -129,9 +129,25 @@ class CandidateApplicationSerializer(
         read_only_fields = fields
 
 
+class CandidateProgressionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CandidateProgression
+        fields = [
+            "id",
+            "stage",
+            "notes",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
 class HRApplicationSerializer(
     serializers.ModelSerializer
 ):
+    progressions = CandidateProgressionSerializer(
+        many=True,
+        read_only=True,
+    )
     candidate_username = (
         serializers.SerializerMethodField()
     )
@@ -244,6 +260,7 @@ class HRApplicationSerializer(
             "recommendation",
             "application_status",
             "submitted_at",
+            "progressions",
         ]
 
         read_only_fields = fields

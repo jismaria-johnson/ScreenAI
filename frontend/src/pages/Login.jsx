@@ -15,6 +15,7 @@ import {
   clearAuthData,
   isLoggedIn,
   saveAuthData,
+  getDashboardPath,
 } from "../utils/auth";
 
 function Login() {
@@ -42,7 +43,7 @@ function Login() {
   useEffect(() => {
     if (isLoggedIn()) {
       navigate(
-        "/hr-dashboard",
+        getDashboardPath(),
         {
           replace: true,
         }
@@ -124,10 +125,12 @@ function Login() {
         formData
       );
 
+      const userRole = response.data.role || "hr";
+
       saveAuthData({
         access: response.data.access,
         refresh: response.data.refresh,
-        role: "hr",
+        role: userRole,
       });
 
       const requestedPath =
@@ -135,7 +138,7 @@ function Login() {
 
       navigate(
         requestedPath ||
-          "/hr-dashboard",
+          getDashboardPath(),
         {
           replace: true,
         }
