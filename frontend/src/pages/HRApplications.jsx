@@ -3,6 +3,41 @@ import { useSearchParams } from "react-router-dom";
 
 import API from "../api/axiosConfig";
 
+const getPlaceholderForStage = (stageName) => {
+  switch (stageName) {
+    case "Hired":
+      return "Add notes about the hiring decision";
+    case "Offer Extended":
+      return "Add offer details, proposed joining date, and acceptance status";
+    case "Onboarding":
+      return "Add orientation, document verification, or onboarding notes";
+    case "Active Employee":
+      return "Add joining confirmation, role assignment, or employment notes";
+    case "Promoted":
+      return "Add promotion details and effective date";
+    case "Resigned":
+      return "Add resignation details and last working date";
+    case "Terminated":
+      return "Add termination details and effective date";
+    default:
+      return "Add notes about this progression update";
+  }
+};
+
+const getStatusBadgeClass = (status) => {
+  switch (status) {
+    case "hired":
+      return "badge bg-success fs-6 px-3 py-2";
+    case "shortlisted":
+      return "badge bg-primary fs-6 px-3 py-2";
+    case "rejected":
+      return "badge bg-danger fs-6 px-3 py-2";
+    case "pending":
+    default:
+      return "badge bg-secondary fs-6 px-3 py-2";
+  }
+};
+
 function HRApplications() {
   const [searchParams, setSearchParams] =
     useSearchParams();
@@ -953,7 +988,7 @@ function HRApplications() {
                     <input
                       type="text"
                       className="form-control form-control-sm"
-                      placeholder="Orientation details, contract signed, etc."
+                      placeholder={getPlaceholderForStage(progStage)}
                       value={progNotes}
                       onChange={(e) => setProgNotes(e.target.value)}
                       disabled={updatingProg}
@@ -1010,7 +1045,15 @@ function HRApplications() {
             </div>
           )}
 
-          <div className="d-flex gap-2 flex-wrap mt-3">
+          {/* Status Badge */}
+          <div className="mb-4 d-flex align-items-center gap-3 bg-light p-3 rounded-3 border">
+            <span className="fw-bold text-dark mb-0">Current Recruitment Status:</span>
+            <span className={getStatusBadgeClass(selectedApplication.application_status)}>
+              {selectedApplication.application_status.toUpperCase()}
+            </span>
+          </div>
+
+          <div className="d-flex gap-2 flex-wrap mt-3 mb-4">
             <a
               href={getResumeUrl(
                 selectedApplication.resume
@@ -1032,73 +1075,71 @@ function HRApplications() {
               Download Resume
             </a>
 
-            <button
-              type="button"
-              className="btn btn-success"
-              onClick={() =>
-                updateStatus(
-                  selectedApplication.id,
-                  "hired"
-                )
-              }
-              disabled={
-                selectedApplication.application_status ===
-                "hired"
-              }
-            >
-              🎉 Hire Candidate
-            </button>
+            {selectedApplication.application_status === "hired" ? (
+              <div className="w-100 alert alert-success border-0 py-2 px-3 mt-2 mb-0 small fw-bold">
+                🎉 Recruitment completed. Continue updates through the progression timeline.
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() =>
+                    updateStatus(
+                      selectedApplication.id,
+                      "hired"
+                    )
+                  }
+                >
+                  🎉 Hire Candidate
+                </button>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() =>
-                updateStatus(
-                  selectedApplication.id,
-                  "shortlisted"
-                )
-              }
-              disabled={
-                selectedApplication.application_status ===
-                "shortlisted"
-              }
-            >
-              Shortlist
-            </button>
+                {selectedApplication.application_status !== "shortlisted" && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() =>
+                      updateStatus(
+                        selectedApplication.id,
+                        "shortlisted"
+                      )
+                    }
+                  >
+                    Shortlist
+                  </button>
+                )}
 
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() =>
-                updateStatus(
-                  selectedApplication.id,
-                  "rejected"
-                )
-              }
-              disabled={
-                selectedApplication.application_status ===
-                "rejected"
-              }
-            >
-              Reject
-            </button>
+                {selectedApplication.application_status !== "rejected" && (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() =>
+                      updateStatus(
+                        selectedApplication.id,
+                        "rejected"
+                      )
+                    }
+                  >
+                    Reject
+                  </button>
+                )}
 
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() =>
-                updateStatus(
-                  selectedApplication.id,
-                  "pending"
-                )
-              }
-              disabled={
-                selectedApplication.application_status ===
-                "pending"
-              }
-            >
-              Mark Pending
-            </button>
+                {selectedApplication.application_status !== "pending" && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      updateStatus(
+                        selectedApplication.id,
+                        "pending"
+                      )
+                    }
+                  >
+                    Mark Pending
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

@@ -348,6 +348,16 @@ class UpdateApplicationStatusView(
             "application_status"
         )
 
+        if application.application_status == "hired":
+            if new_status == "hired":
+                raise ValidationError(
+                    {"detail": "Application is already hired."}
+                )
+            else:
+                raise ValidationError(
+                    {"detail": "A hired application cannot be moved back to a recruitment status."}
+                )
+
         allowed_statuses = [
             "pending",
             "shortlisted",

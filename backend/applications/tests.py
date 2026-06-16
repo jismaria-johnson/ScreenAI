@@ -589,3 +589,123 @@ class AdminPanelTestCase(APITestCase):
         
         # Verify in database that progression log was deleted
         self.assertFalse(self.hired_app.progressions.filter(id=prog.id).exists())
+
+
+class HRStatusTransitionTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        
+        # HR User
+        self.hr_user = User.objects.create_user(username="hr_transition_user", password="password", email="hr_transition@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+
+        # Other HR User
+        self.other_hr_user = User.objects.create_user(username="other_transition_user", password="password", email="other_transition@test.com")
+        self.other_hr_profile = Profile.objects.create(user=self.other_hr_user, role="hr")
+
+        # Admin User
+        self.admin_user = User.objects.create_superuser(username="admin_transition_user", password="password", email="admin_transition@test.com")
+        self.admin_profile = Profile.objects.create(user=self.admin_user, role="admin")
+
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Software Engineer",
+            company_name="TestCorp",
+            job_description="Dev role",
+            required_skills="Python",
+            required_experience="2 years",
+            status="open"
+        )
+
+        self.resume_file = SimpleUploadedFile(
+            "resume.pdf",
+            b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+            content_type="application/pdf"
+        )
+
+        # Pending application
+        self.app = Application.objects.create(
+            job=self.job,
+            candidate_name="John Candidate",
+            candidate_email="john@candidate.com",
+            resume=self.resume_file,
+            application_status="pending"
+        )
+
+    def test_pending_can_be_shortlisted(self):
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/{self.app.id}/status/"
+        response = self.client.patch(url, {"application_status": "shortlisted"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.application_status, "shortlisted")
+
+    def test_shortlisted_can_be_hired(self):
+        self.app.application_status = "shortlisted"
+        self.app.save()
+        
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/{self.app.id}/status/"
+        response = self.client.patch(url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.application_status, "hired")
+        self.assertEqual(self.app.progressions.count(), 1)
+        self.assertEqual(self.app.progressions.first().stage, "Hired")
+
+    def test_hired_cannot_be_shortlisted_rejected_or_pending(self):
+        self.app.application_status = "hired"
+        self.app.save()
+
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/{self.app.id}/status/"
+        
+        # Cannot shortlist
+        response = self.client.patch(url, {"application_status": "shortlisted"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("A hired application cannot be moved back", response.data["detail"])
+
+        # Cannot reject
+        response = self.client.patch(url, {"application_status": "rejected"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("A hired application cannot be moved back", response.data["detail"])
+
+        # Cannot mark pending
+        response = self.client.patch(url, {"application_status": "pending"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("A hired application cannot be moved back", response.data["detail"])
+
+    def test_repeated_hire_requests_do_not_create_duplicate_progression(self):
+        self.app.application_status = "hired"
+        self.app.save()
+        
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/{self.app.id}/status/"
+        
+        # Try to hire again -> should fail with ValidationError
+        response = self.client.patch(url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Application is already hired.")
+        
+        # Verify only one Hired progression exists
+        self.assertEqual(self.app.progressions.filter(stage="Hired").count(), 1)
+
+    def test_hiring_hr_can_add_progression_but_other_hr_cannot(self):
+        # Mark application as hired
+        self.app.application_status = "hired"
+        self.app.save()
+
+        url = f"/api/applications/admin/{self.app.id}/progression/"
+        payload = {"stage": "Offer Extended", "notes": "Details of the offer"}
+
+        # Other HR tries to update -> Forbidden
+        self.client.force_authenticate(user=self.other_hr_user)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Hiring HR tries to update -> OK
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.app.progressions.count(), 2) # "Hired" and "Offer Extended"
+

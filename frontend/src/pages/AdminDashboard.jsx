@@ -1,6 +1,27 @@
 import { useEffect, useState } from "react";
 import API from "../api/axiosConfig";
 
+const getPlaceholderForStage = (stageName) => {
+  switch (stageName) {
+    case "Hired":
+      return "Add notes about the hiring decision";
+    case "Offer Extended":
+      return "Add offer details, proposed joining date, and acceptance status";
+    case "Onboarding":
+      return "Add orientation, document verification, or onboarding notes";
+    case "Active Employee":
+      return "Add joining confirmation, role assignment, or employment notes";
+    case "Promoted":
+      return "Add promotion details and effective date";
+    case "Resigned":
+      return "Add resignation details and last working date";
+    case "Terminated":
+      return "Add termination details and effective date";
+    default:
+      return "Add notes about this progression update";
+  }
+};
+
 function AdminDashboard() {
   const [hrs, setHrs] = useState([]);
   const [hiredCandidates, setHiredCandidates] = useState([]);
@@ -895,7 +916,7 @@ function AdminDashboard() {
                         <textarea
                           className="form-control"
                           rows="2"
-                          placeholder="Add details (e.g. Completed documentation, orientation completed)"
+                          placeholder={getPlaceholderForStage(stage)}
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
                           disabled={updating}
