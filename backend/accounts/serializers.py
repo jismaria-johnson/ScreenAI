@@ -125,6 +125,11 @@ class HRTokenObtainPairSerializer(
     def validate(self, attrs):
         data = super().validate(attrs)
 
+        if not self.user.is_active:
+            raise serializers.ValidationError(
+                "This account is suspended."
+            )
+
         profile = getattr(
             self.user,
             "profile",
@@ -141,6 +146,10 @@ class HRTokenObtainPairSerializer(
             )
 
         data["role"] = role
+
+        from django.utils import timezone
+        self.user.last_login = timezone.now()
+        self.user.save(update_fields=["last_login"])
 
         return data
 

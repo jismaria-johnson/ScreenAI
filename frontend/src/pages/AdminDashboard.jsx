@@ -1108,7 +1108,7 @@ function AdminDashboard() {
                               </td>
                               {!selectedHR && (
                                 <td className="text-center text-secondary d-none d-md-table-cell">
-                                  {hr.last_login ? new Date(hr.last_login).toLocaleString() : "Never"}
+                                  {hr.last_login ? new Date(hr.last_login).toLocaleString() : "Not logged in yet"}
                                 </td>
                               )}
                               <td className="text-center">
@@ -1165,7 +1165,7 @@ function AdminDashboard() {
                         <div className="col-12 border-top border-secondary pt-2 mt-2">
                           <span className="text-secondary d-block fw-bold mb-1">Last Login Session:</span>
                           <strong className="text-white">
-                            {selectedHR.last_login ? new Date(selectedHR.last_login).toLocaleString() : "Never logged in"}
+                            {selectedHR.last_login ? new Date(selectedHR.last_login).toLocaleString() : "Not logged in yet"}
                           </strong>
                         </div>
                       </div>

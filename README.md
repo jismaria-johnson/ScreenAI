@@ -1,424 +1,209 @@
 # ScreenAI
 
-ScreenAI is an AI-assisted resume screening and candidate shortlisting platform built with React, Django REST Framework, and Gemini AI.
+ScreenAI is an AI-assisted recruitment screening platform that helps HR teams publish jobs, collect public candidate applications, analyze resumes, manage interviews, and track hiring progress through HR and Admin dashboards.
 
-Candidates can register, browse open jobs, upload PDF resumes, and track application status. HR users can create and manage jobs, review applicants in a structured table, filter candidates, inspect AI-generated screening results, and make the final shortlist or rejection decision.
+## Key Features
 
-AI assists the initial screening process. The final hiring decision remains with HR.
+* **Admin-Created Recruiter Accounts:** No public self-registration for HR; recruiters are provisioned exclusively by administrators.
+* **HR Job Creation & Management:** Create, edit, close, and manage active jobs.
+* **UUID-Based Public Application Links:** Generate secure, unique links for each job listing.
+* **Public Candidate Application Form:** Simple form allowing candidates to apply directly to open listings.
+* **PDF Resume Upload & Validation:** Secure document processing with strict file type (PDF) and size (under 5 MB) checks.
+* **AI Resume Scoring & Recommendation:** Auto-parse resumes using Gemini to extract skills, experience years, and provide a compatibility score.
+* **Candidate Filtering & Review:** Rich filtering options for recruiters based on AI score, experience, or matched skills.
+* **Shortlist/Reject/Hire Workflow:** Streamlined stages to progress candidate applications.
+* **Interview Scheduling & Tracking:** Recruiter workspace to manage scheduling, updates, and candidate rounds.
+* **Post-Hire Progression Tracking:** Governance overview to track hired candidates' onboarding/progression pipeline.
+* **Admin Recruiter Governance:** Administration panel to monitor recruiters' active jobs, metrics, and manage credentials.
+* **Recruiter Suspension/Reactivation:** Admins can suspend or reactivate recruiter accounts on the fly.
+* **Recruiter Credential Reset:** Safe mechanism to reset password credentials for HR staff.
+* **Audit & Activity Tracking:** Recruiter analytics overview dashboard.
+* **Responsive Dark UI:** Sleek, modern dashboard utilizing CSS variables and unified surface levels.
 
-## Features
+## Tech Stack
+
+* **Frontend:** React, JavaScript (ES6+), Vite, Vanilla CSS (Custom tokens), Bootstrap 5, React Router, Axios.
+* **Backend:** Python 3, Django, Django REST Framework, Django Simple JWT (Token Auth), django-cors-headers, SQLite.
+* **AI & Document Processing:** Gemini API (`google.generativeai`), `pdfplumber`.
+
+## User Roles
+
+### 1. Admin
+* Provisions and manages HR recruiter accounts.
+* Suspends or reactivates recruiter profiles.
+* Resets HR recruiter passwords.
+* Views platform-wide performance analytics and placed candidate progression pipelines.
+
+### 2. HR Recruiter
+* Creates and publishes job postings.
+* Shares unique application links with prospective candidates.
+* Reviews candidates, reads AI-generated summaries, and filters applications.
+* Schedules interview rounds, records feedback, and updates hiring statuses.
+
+### 3. Candidate
+* Accesses public application pages via job-specific UUID links.
+* Submits details and uploads a PDF resume without registering an account.
+
+## Main Workflows
 
 ### Candidate Flow
+```text
+Access secure public job link
+→ Complete applicant form details
+→ Upload PDF resume
+→ Auto-triggers backend AI parsing and scoring
+```
 
-- Apply by uploading a PDF resume through secure public links
-- PDF type and size validation
-- Duplicate-application prevention
-- No account registration or login required
+### HR Flow
+```text
+Admin creates recruiter credentials
+→ Recruiter logs in via JWT
+→ Publishes job listing & generates public token link
+→ Reviews applicants using AI score and feedback
+→ Schedules interview rounds & manages candidate status
+```
 
-### HR
+### Admin Flow
+```text
+Admin login
+→ Manage recruiter list (create, suspend, reset password)
+→ Track placed candidates' progression logs
+→ Review general platform analytics (jobs, applicants, hires)
+```
 
-- HR registration and JWT login
-- Protected HR routes
-- Create, edit, close, reopen, and delete jobs
-- Prevent deletion of jobs that already have applications
-- View applicant count for each job
-- Review applications in a table
-- View candidate name, email, phone number, and resume
-- View or download uploaded resumes
-- View AI score, recommendation, matched skills, missing skills, and feedback
-- View extracted professional experience and previous companies
-- Filter applications by:
-  - Job
-  - Minimum AI score
-  - Experience
-  - Previous company
-  - AI recommendation
-  - HR status
-- Shortlist, reject, or return an application to pending
-- HR dashboard with job and application statistics
+## Security Highlights
 
-### AI Screening
-
-- Extract PDF resume text using `pdfplumber`
-- Compare resume content with job requirements using Gemini
-- Generate an AI score from 0 to 100
-- Identify matched and missing skills
-- Evaluate experience suitability
-- Extract total professional experience
-- Extract previous company names
-- Generate an HR-friendly summary and recommendation
-- Mark applications as `Not evaluated` when AI processing fails instead of assigning a misleading score
-
-## Technology Stack
-
-### Frontend
-
-- React
-- JavaScript
-- Vite
-- Bootstrap
-- React Router
-- Axios
-
-### Backend
-
-- Python
-- Django
-- Django REST Framework
-- Simple JWT
-- django-cors-headers
-- SQLite
-
-### AI and Resume Processing
-
-- Gemini API
-- pdfplumber
+* **JWT Authentication:** Stateful session authentication using secure access/refresh JSON Web Tokens.
+* **Role-Based Access Control (RBAC):** Strict view/endpoint constraints between HR and Admin capabilities.
+* **Admin-Only Recruiter Provisioning:** Excludes any self-signup routes for recruiter accounts.
+* **Suspended Account Blocking:** Instantly blocks login attempts for suspended recruiters.
+* **UUID Public Links:** Protects application pages from URL enumeration attacks.
+* **PDF-Only Resume Validation:** Enforces strict mime-type verification.
+* **Public Application Throttling:** Rate limiting to protect endpoints from automated abuse.
+* **Transaction-Safe Actions:** Ensures database integrity when hiring or updating models.
+* **Credential Safety:** Temporary passwords are not exposed or logged after creation/reset.
+* **Excluded Configuration Secrets:** Excludes all environment secrets and local database copies.
 
 ## Project Structure
 
 ```text
 ScreenAI/
 ├── backend/
-│   ├── accounts/
-│   ├── jobs/
-│   ├── applications/
-│   ├── ai_engine/
-│   ├── screenai/
-│   ├── media/
-│   │   └── resumes/
-│   ├── manage.py
-│   ├── requirements.txt
-│   └── .env
+│   ├── accounts/          # Authentication & recruiter provisioning
+│   ├── jobs/              # Job posting & management models/views
+│   ├── applications/      # Applications, scheduling, & progression logs
+│   ├── ai_engine/         # Gemini parsing & scoring logic
+│   ├── screenai/          # Core Django project settings
+│   └── requirements.txt   # Backend dependencies list
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── api/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── utils/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── package.json
-│   └── vite.config.js
+│   │   ├── api/           # Axios interceptors & configs
+│   │   ├── components/    # Reusable widgets (Navbar, Toast, etc.)
+│   │   ├── pages/         # Dashboard panels & public form pages
+│   │   ├── utils/         # Authentication storage helpers
+│   │   ├── App.jsx        # Routing & layout configuration
+│   │   └── index.css      # Core styles & dark design tokens
+│   ├── package.json       # Frontend package configuration
+│   └── vite.config.js     # Vite compiler configuration
 │
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
-## Main Modules
+## Setup Instructions
 
-### Authentication
-
-ScreenAI supports Recruiter (HR) and System Administrator (Admin) accounts using JWT authentication. Both roles share a unified Login interface. HR users can register directly, whereas Admin accounts are created via Django's administrative CLI.
-
-The frontend includes role-based protected routes:
-
-- HR users cannot access administrative dashboards or APIs.
-- Admin users are restricted from HR job-creation pages.
-- Candidates apply through public links without accounts.
-- Expired access tokens are refreshed automatically using the refresh token.
-- Invalid or expired sessions redirect to the login page.
-
-### Profiles
-
-Profile information includes:
-
-- Username
-- Role
-- First name
-- Last name
-- Email
-- Phone number
-- Education
-
-Skills and professional experience are not manually entered in the profile. They are extracted from the resume during AI screening.
-
-### Jobs
-
-HR users can create jobs containing:
-
-- Job title
-- Company name
-- Job description
-- Required skills
-- Required experience
-- Location
-- Status
-
-HR users can edit, close, reopen, and delete their jobs. Jobs with existing applications cannot be deleted and should be closed instead.
-
-Candidates and public users see only open jobs.
-
-### Applications
-
-Candidates submit a PDF resume for a selected job.
-
-The backend:
-
-1. Confirms the job is open.
-2. Checks that the candidate has not already applied.
-3. Validates the uploaded PDF.
-4. Saves the application and resume.
-5. Extracts resume text.
-6. Sends the extracted content and job requirements to Gemini.
-7. Saves the structured AI results.
-
-Candidates receive only job and application-status information. Internal AI screening details are available only to HR.
-
-### HR Candidate Screening
-
-HR users see applicants in a table containing:
-
-- Candidate name
-- Email
-- Phone number
-- Job
-- AI score
-- Total experience
-- Previous companies
-- AI recommendation
-- HR application status
-
-Detailed screening information includes:
-
-- Matched skills
-- Missing skills
-- Experience match
-- Experience summary
-- AI feedback
-- Original resume
-
-## API Endpoints
-
-### Authentication and Profiles
-
-```text
-POST  /api/accounts/register/
-POST  /api/accounts/login/
-POST  /api/accounts/token/refresh/
-GET   /api/accounts/profile/
-PATCH /api/accounts/profile/
-PUT   /api/accounts/profile/
-
-# Admin Management API
-GET   /api/applications/admin/hrs/
-GET   /api/applications/admin/hired-candidates/
-POST  /api/applications/admin/<id>/progression/
-```
-
-### Jobs
-
-```text
-GET    /api/jobs/
-POST   /api/jobs/
-GET    /api/jobs/<id>/
-PUT    /api/jobs/<id>/
-PATCH  /api/jobs/<id>/
-DELETE /api/jobs/<id>/
-```
-
-### Applications
-
-```text
-POST  /api/applications/apply/
-GET   /api/applications/my/
-GET   /api/applications/hr/
-PATCH /api/applications/<id>/status/
-```
-
-### HR Application Filters
-
-Examples:
-
-```text
-GET /api/applications/hr/?job=1
-GET /api/applications/hr/?min_score=80
-GET /api/applications/hr/?experience=2
-GET /api/applications/hr/?experience=fresher
-GET /api/applications/hr/?company=Example%20Company
-GET /api/applications/hr/?recommendation=shortlist
-GET /api/applications/hr/?status=shortlisted
-```
-
-Filters can be combined.
-
-## Backend Setup
-
-Open PowerShell from the project folder:
-
-```powershell
-cd D:\internship\ScreenAI\backend
-```
-
-Create a virtual environment:
-
-```powershell
-python -m venv .venv
-```
-
-Activate it:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Install backend dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Create `backend/.env`:
+### Environment Variables
+The Django backend requires a `.env` file inside the `backend/` directory. Create this file locally and define the following variables:
 
 ```env
-GEMINI_API_KEY=your_real_gemini_api_key
+GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash-lite
 
-DJANGO_SECRET_KEY=replace-with-a-private-secret-key
+DJANGO_SECRET_KEY=generate_a_secure_django_secret_key
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
 
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-Never commit the `.env` file.
+> [!WARNING]
+> Never commit the `.env` file or SQLite database (`db.sqlite3`) to git.
 
-Apply migrations:
+### Running Backend
 
+1. Navigate to the `backend/` folder:
+   ```powershell
+   cd backend
+   ```
+2. Create and activate a Python virtual environment:
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. Install dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+4. Run migrations:
+   ```powershell
+   python manage.py migrate
+   ```
+5. Create an Admin superuser account:
+   ```powershell
+   python manage.py createsuperuser
+   ```
+6. Run Django validation checks:
+   ```powershell
+   python manage.py check
+   ```
+7. Launch the development server:
+   ```powershell
+   python manage.py runserver
+   ```
+
+### Running Frontend
+
+1. Navigate to the `frontend/` folder:
+   ```powershell
+   cd frontend
+   ```
+2. Install Node packages:
+   ```powershell
+   npm install
+   ```
+3. Start the Vite server:
+   ```powershell
+   npm run dev
+   ```
+
+## Testing
+
+### Backend tests
+Run Django tests locally to verify serializers, view logic, and endpoints:
 ```powershell
-python manage.py migrate
-```
-
-Create an administrator account:
-
-```powershell
-python manage.py createsuperuser
-```
-
-Check the Django configuration:
-
-```powershell
-python manage.py check
-```
-
-Start the backend:
-
-```powershell
-python manage.py runserver
-```
-
-Backend API:
-
-```text
-http://127.0.0.1:8000/
-```
-
-## Frontend Setup
-
-Open a second PowerShell terminal:
-
-```powershell
-cd D:\internship\ScreenAI\frontend
-```
-
-Install dependencies:
-
-```powershell
-npm install
-```
-
-Start the frontend:
-
-```powershell
-npm run dev
-```
-
-Frontend:
-
-```text
-http://localhost:5173/
-```
-
-## Application Flow
-
-### Candidate Flow
-
-```text
-Access secure public job application link
-→ Upload PDF resume and fill details
-→ AI screening processing
-```
-
-### HR Flow
-
-```text
-Register HR Account
-→ Login via shared Login page
-→ Create and manage jobs
-→ Share public job token links with candidates
-→ Review applications and AI scores/recommendations
-→ Shortlist, reject, or mark pending
-```
-
-### Admin Flow
-
-```text
-Create superuser / staff user via CLI
-→ Login via shared Login page
-→ Redirected to Admin Dashboard
-→ Monitor registered HR profiles and job creation metrics
-→ Track hired candidate progression pipeline
-```
-
-## Important Notes
-
-- Only PDF resumes are accepted.
-- The maximum resume size is 5 MB.
-- A candidate cannot apply to the same job more than once.
-- Applications cannot be submitted to closed jobs.
-- AI-generated results support screening but may require human verification.
-- HR controls the final application status.
-- Older applications created before experience extraction was added may show `Not evaluated`.
-- Existing AI results remain stored in SQLite and are not automatically recalculated.
-
-## Development Checks
-
-Backend:
-
-```powershell
-cd D:\internship\ScreenAI\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
-python manage.py check
+python manage.py test
 ```
 
-Frontend:
-
+### Frontend tests
+Verify code styling and build compatibility:
 ```powershell
-cd D:\internship\ScreenAI\frontend
+cd frontend
+npm run lint
 npm run build
 ```
 
-Optional frontend lint check:
-
-```powershell
-npm run lint
-```
+## Git Branch Note
+All development, visual polishing, and recruitment flow fixes are implemented on the `public-application-flow` branch.
 
 ## Future Improvements
 
-- Public application forms generated and shared by HR
-- Email notifications
-- Application withdrawal
-- Resume replacement and rescoring
-- Pagination for large applicant lists
-- Background AI processing
-- Cloud media storage
-- PostgreSQL deployment
-- Automated backend and frontend tests
-
-## Project Purpose
-
-ScreenAI demonstrates how AI can reduce manual effort during the initial resume-screening stage.
-
-The system is designed as a decision-support tool. Gemini provides structured screening assistance, while HR remains responsible for the final hiring decision.
+* Dynamic public application forms generated/configured by HR.
+* Email notifications for scheduled interview rounds.
+* Support for application withdrawal.
+* Resume replacement and scoring recalculations.
+* List pagination for tables with large candidate datasets.
+* Background task queues for AI scoring.
+* Cloud media storage integration.
+* Transition to production PostgreSQL databases.
