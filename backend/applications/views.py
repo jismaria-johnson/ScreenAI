@@ -21,16 +21,18 @@ from ai_engine.resume_parser import (
     extract_text_from_pdf,
 )
 
-from .models import Application
+from .models import Application, Interview
 from .permissions import (
     IsCandidateUser,
     IsHRUser,
+    IsAdminOrHiringHRForInterview,
 )
 from .serializers import (
     ApplicationCreateSerializer,
     CandidateApplicationSerializer,
     HRApplicationSerializer,
     PublicApplicationCreateSerializer,
+    InterviewSerializer,
 )
 
 
@@ -508,3 +510,36 @@ class PublicApplicationCreateView(
         )
 
         application.evaluate_and_save()
+
+
+class ApplicationInterviewsView(generics.ListCreateAPIView):
+    permission_classes = [IsAdminOrHiringHRForInterview]
+    serializer_class = InterviewSerializer
+
+    def get_application(self):
+        app_id = self.kwargs.get("application_id")
+        try:
+            app = Application.objects.get(pk=app_id)
+        except Application.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Application not found.")
+        self.check_object_permissions(self.request, app)
+        return app
+
+    def get_queryset(self):
+        app = self.get_application()
+        return app.interviews.select_related("created_by").order_by("round_number", "scheduled_at")
+
+    def perform_create(self, serializer):
+        app = self.get_application()
+        serializer.save(
+            application=app,
+            created_by=self.request.user,
+            status="scheduled"
+        )
+
+
+class InterviewDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAdminOrHiringHRForInterview]
+    serializer_class = InterviewSerializer
+    queryset = Interview.objects.select_related("application", "application__job", "created_by").all()

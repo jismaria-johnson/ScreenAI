@@ -23,15 +23,12 @@ function Navbar() {
   };
 
   const isUserAdmin = getUserRole() === "admin";
-  const userHomePath = token
-    ? (isUserAdmin ? "/admin-dashboard" : "/hr-dashboard")
-    : "/";
 
   return (
-    <nav className="navbar navbar-expand-lg navbar-dark bg-dark px-4">
+    <nav className="navbar navbar-expand-lg navbar-dark px-4" style={{ backgroundColor: "var(--screenai-surface)", borderBottom: "1px solid var(--screenai-border)" }}>
       <Link
         className="navbar-brand fw-bold"
-        to={userHomePath}
+        to="/"
       >
         ScreenAI
       </Link>
@@ -39,7 +36,7 @@ function Navbar() {
       <div className="ms-auto d-flex gap-3 align-items-center flex-wrap">
         <Link
           className="nav-link text-white"
-          to={userHomePath}
+          to="/"
         >
           Home
         </Link>
@@ -59,30 +56,9 @@ function Navbar() {
               <>
                 <Link
                   className="nav-link text-white"
-                  to="/my-jobs"
+                  to="/hr-dashboard"
                 >
-                  My Jobs
-                </Link>
-
-                <Link
-                  className="nav-link text-white"
-                  to="/add-job"
-                >
-                  Add Job
-                </Link>
-
-                <Link
-                  className="nav-link text-white"
-                  to="/hr-applications"
-                >
-                  Applications
-                </Link>
-
-                <Link
-                  className="nav-link text-white"
-                  to="/profile"
-                >
-                  Profile
+                  HR Dashboard
                 </Link>
               </>
             )}
@@ -102,13 +78,6 @@ function Navbar() {
               to="/login"
             >
               Login
-            </Link>
-
-            <Link
-              className="btn btn-outline-light btn-sm"
-              to="/register"
-            >
-              Register
             </Link>
           </>
         )}

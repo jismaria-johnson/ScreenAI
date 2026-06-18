@@ -5,6 +5,8 @@ from .views import (
     HRApplicationsView,
     UpdateApplicationStatusView,
     PublicApplicationCreateView,
+    ApplicationInterviewsView,
+    InterviewDetailView,
 )
 from .admin_views import (
     AdminHRListView,
@@ -13,6 +15,8 @@ from .admin_views import (
     AdminCandidateProgressionDetailView,
     AdminToggleHRActiveView,
     AdminSystemActivityListView,
+    AdminInterviewsListView,
+    AdminResetHRPasswordView,
 )
 
 
@@ -22,10 +26,14 @@ urlpatterns = [
     path("hr/", HRApplicationsView.as_view(), name="hr_applications"),
     path("<int:pk>/status/", UpdateApplicationStatusView.as_view(), name="update_application_status"),
     path("public/<uuid:token>/", PublicApplicationCreateView.as_view(), name="public_application_create"),
+    path("<int:application_id>/interviews/", ApplicationInterviewsView.as_view(), name="application_interviews"),
+    path("interviews/<int:pk>/", InterviewDetailView.as_view(), name="interview_detail"),
     path("admin/hrs/", AdminHRListView.as_view(), name="admin_hr_list"),
     path("admin/hrs/<int:pk>/toggle/", AdminToggleHRActiveView.as_view(), name="admin_hr_toggle_active"),
     path("admin/activity-log/", AdminSystemActivityListView.as_view(), name="admin_activity_log"),
     path("admin/hired-candidates/", AdminHiredCandidatesListView.as_view(), name="admin_hired_candidates_list"),
+    path("admin/interviews/", AdminInterviewsListView.as_view(), name="admin_interviews_list"),
     path("admin/<int:pk>/progression/", AdminCandidateProgressionCreateView.as_view(), name="admin_candidate_progression_create"),
     path("admin/progression/<int:pk>/", AdminCandidateProgressionDetailView.as_view(), name="admin_candidate_progression_detail"),
+    path("admin/hrs/<int:pk>/reset-password/", AdminResetHRPasswordView.as_view(), name="admin_hr_reset_password"),
 ]

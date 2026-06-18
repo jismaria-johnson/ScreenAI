@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 from jobs.models import Job
 
@@ -291,3 +292,103 @@ def handle_application_hired(sender, instance, **kwargs):
                 updated_by=updated_by,
                 updater_role=updater_role,
             )
+
+
+class Interview(models.Model):
+    INTERVIEW_TYPE_CHOICES = (
+        ("phone", "Phone"),
+        ("video", "Video"),
+        ("in_person", "In Person"),
+        ("technical", "Technical"),
+        ("hr", "HR"),
+        ("managerial", "Managerial"),
+        ("other", "Other"),
+    )
+
+    STATUS_CHOICES = (
+        ("scheduled", "Scheduled"),
+        ("completed", "Completed"),
+        ("cancelled", "Cancelled"),
+        ("no_show", "No Show"),
+    )
+
+    RECOMMENDATION_CHOICES = (
+        ("strong_hire", "Strong Hire"),
+        ("hire", "Hire"),
+        ("review", "Review"),
+        ("no_hire", "No Hire"),
+    )
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="interviews",
+    )
+    round_name = models.CharField(max_length=100)
+    round_number = models.PositiveIntegerField()
+    interview_type = models.CharField(
+        max_length=20,
+        choices=INTERVIEW_TYPE_CHOICES,
+        default="technical",
+    )
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(default=30)
+    location_or_meeting_link = models.TextField(blank=True, default="")
+    interviewer_name = models.CharField(max_length=255, blank=True, default="")
+    interviewer_email = models.EmailField(blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="scheduled",
+    )
+
+    # Ratings (1 to 5)
+    technical_rating = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    communication_rating = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    problem_solving_rating = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    culture_fit_rating = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    overall_rating = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+
+    feedback = models.TextField(blank=True, default="")
+    recommendation = models.CharField(
+        max_length=20,
+        choices=RECOMMENDATION_CHOICES,
+        null=True,
+        blank=True,
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_interviews",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        name = self.application.candidate_name
+        if not name and self.application.candidate:
+            name = self.application.candidate.username
+        return f"{name or 'Unknown'} - Round {self.round_number} ({self.round_name})"

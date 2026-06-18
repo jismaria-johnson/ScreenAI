@@ -186,24 +186,24 @@ function Login() {
             </div>
           )}
 
-          <div className="card border-0 shadow-lg p-4 rounded-4">
+          <div className="card p-4 rounded-4" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
                 <label
                   htmlFor="username"
-                  className="form-label fw-semibold"
+                  className="form-label fw-semibold text-white"
                 >
                   Username
                 </label>
                 <div className="input-group">
-                  <span className="input-group-text bg-light border-end-0">
+                  <span className="input-group-text border-end-0" style={{ backgroundColor: "var(--screenai-surface-elevated)", color: "var(--screenai-text)", borderColor: "var(--screenai-border)" }}>
                     👤
                   </span>
                   <input
                     id="username"
                     type="text"
                     name="username"
-                    className="form-control bg-light border-start-0"
+                    className="form-control border-start-0"
                     placeholder="Enter username"
                     value={formData.username}
                     onChange={handleChange}
@@ -217,19 +217,19 @@ function Login() {
               <div className="mb-4">
                 <label
                   htmlFor="password"
-                  className="form-label fw-semibold"
+                  className="form-label fw-semibold text-white"
                 >
                   Password
                 </label>
                 <div className="input-group">
-                  <span className="input-group-text bg-light border-end-0">
+                  <span className="input-group-text border-end-0" style={{ backgroundColor: "var(--screenai-surface-elevated)", color: "var(--screenai-text)", borderColor: "var(--screenai-border)" }}>
                     🔒
                   </span>
                   <input
                     id="password"
                     type="password"
                     name="password"
-                    className="form-control bg-light border-start-0"
+                    className="form-control border-start-0"
                     placeholder="Enter password"
                     value={formData.password}
                     onChange={handleChange}
@@ -257,8 +257,8 @@ function Login() {
             </form>
           </div>
 
-          <div className="card bg-light border-0 p-3 mt-4 text-center rounded-3">
-            <p className="text-muted small mb-0">
+          <div className="card p-3 mt-4 text-center rounded-3" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
+            <p className="small mb-0" style={{ color: "var(--screenai-text-secondary)" }}>
               <strong>Are you a candidate?</strong> Candidates do not need to register or log in. Please use the unique application link shared directly by the hiring manager.
             </p>
           </div>

@@ -1072,3 +1072,471 @@ class PlacementTransactionTestCase(APITestCase):
         mock_parser.assert_not_called()
 
 
+from applications.models import Interview
+
+class InterviewTestCaseBase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        
+        # Recruiter 1
+        self.hr_user = User.objects.create_user(username="hr_i1", password="password", email="hri1@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+        
+        # Recruiter 2
+        self.other_hr = User.objects.create_user(username="hr_i2", password="password", email="hri2@test.com")
+        self.other_hr_profile = Profile.objects.create(user=self.other_hr, role="hr")
+        
+        # Admin
+        self.admin_user = User.objects.create_superuser(username="admin_i", password="password", email="admini@test.com")
+        self.admin_profile = Profile.objects.create(user=self.admin_user, role="admin")
+
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Dev",
+            company_name="Corp",
+            job_description="Dev role",
+            status="open"
+        )
+        self.resume_file = SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%dummy\n%%EOF", content_type="application/pdf")
+        
+        self.app = Application.objects.create(
+            job=self.job,
+            candidate_name="John Doe",
+            candidate_email="john@test.com",
+            resume=self.resume_file,
+            application_status="shortlisted"
+        )
+        self.url = f"/api/applications/{self.app.id}/interviews/"
+
+
+class InterviewModelAndSerializerTestCase(InterviewTestCaseBase):
+    def test_valid_interview_creation(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "duration_minutes": 45,
+            "location_or_meeting_link": "http://zoom.us/link",
+            "interviewer_name": "Alice Interviewer",
+            "interviewer_email": "alice@test.com"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Interview.objects.count(), 1)
+        self.assertEqual(Interview.objects.first().status, "scheduled")
+
+    def test_ratings_outside_1_to_5_rejected(self):
+        self.client.force_authenticate(user=self.hr_user)
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Technical Round 1",
+            round_number=1,
+            interview_type="video",
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            duration_minutes=45,
+            location_or_meeting_link="http://zoom.us/link",
+            created_by=self.hr_user
+        )
+        url = f"/api/applications/interviews/{interview.id}/"
+        
+        payload = {
+            "status": "completed",
+            "technical_rating": 6,
+            "communication_rating": 5,
+            "problem_solving_rating": 5,
+            "culture_fit_rating": 5,
+            "overall_rating": 5,
+            "feedback": "Perfect",
+            "recommendation": "hire"
+        }
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+        payload["technical_rating"] = 0
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_zero_or_negative_round_number_rejected(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 0,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_duration_rejected(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "duration_minutes": 0,
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scheduled_time_in_past_rejected(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() - timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_completed_interview_requires_ratings_feedback_recommendation(self):
+        self.client.force_authenticate(user=self.hr_user)
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Technical Round 1",
+            round_number=1,
+            interview_type="video",
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            location_or_meeting_link="http://zoom.us/link",
+            created_by=self.hr_user
+        )
+        url = f"/api/applications/interviews/{interview.id}/"
+        
+        payload = {"status": "completed", "feedback": "Good", "recommendation": "hire"}
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_video_interview_requires_meeting_link(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": ""
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_in_person_interview_requires_location(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Technical Round 1",
+            "round_number": 1,
+            "interview_type": "in_person",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "   "
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_duplicate_active_round_rejected(self):
+        self.client.force_authenticate(user=self.hr_user)
+        Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            status="scheduled",
+            created_by=self.hr_user
+        )
+        
+        payload = {
+            "round_name": "Tech 1 Duplicate",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class InterviewPermissionsTestCase(InterviewTestCaseBase):
+    def test_owning_hr_can_list_and_create(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        payload = {
+            "round_name": "HR Round",
+            "round_number": 2,
+            "interview_type": "phone",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "phone details"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_another_hr_cannot_list_retrieve_or_modify(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            created_by=self.hr_user
+        )
+        
+        self.client.force_authenticate(user=self.other_hr)
+        
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        url_detail = f"/api/applications/interviews/{interview.id}/"
+        response = self.client.get(url_detail)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.patch(url_detail, {"round_name": "Stolen Round"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_view_all(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        url_detail = f"/api/applications/interviews/{interview.id}/"
+        response = self.client.get(url_detail)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get("/api/applications/admin/interviews/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unauthenticated_user_cannot_access(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class InterviewWorkflowTestCase(InterviewTestCaseBase):
+    def test_pending_candidate_cannot_receive_interview(self):
+        self.app.application_status = "pending"
+        self.app.save()
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Tech 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_shortlisted_candidate_can_receive_interview(self):
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Tech 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_rejected_candidate_cannot_receive_interview(self):
+        self.app.application_status = "rejected"
+        self.app.save()
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Tech 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_hired_candidate_cannot_receive_interview(self):
+        self.app.application_status = "hired"
+        self.app.save()
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Tech 1",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_interview_can_be_rescheduled(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        new_time = timezone.now() + timezone.timedelta(days=2)
+        response = self.client.patch(url, {"scheduled_at": new_time}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        interview.refresh_from_db()
+        self.assertEqual(interview.scheduled_at, new_time)
+
+    def test_interview_can_be_cancelled(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        response = self.client.patch(url, {"status": "cancelled"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        interview.refresh_from_db()
+        self.assertEqual(interview.status, "cancelled")
+
+    def test_interview_can_be_marked_no_show(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        response = self.client.patch(url, {"status": "no_show"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        interview.refresh_from_db()
+        self.assertEqual(interview.status, "no_show")
+
+    def test_completed_interview_stores_ratings_and_completion_time(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        payload = {
+            "status": "completed",
+            "technical_rating": 4,
+            "communication_rating": 4,
+            "problem_solving_rating": 5,
+            "culture_fit_rating": 5,
+            "overall_rating": 4,
+            "feedback": "Outstanding skills.",
+            "recommendation": "hire"
+        }
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        interview.refresh_from_db()
+        self.assertEqual(interview.status, "completed")
+        self.assertIsNotNone(interview.completed_at)
+
+    def test_cancelled_interview_cannot_be_completed_directly(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            status="cancelled",
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        payload = {
+            "status": "completed",
+            "technical_rating": 4,
+            "communication_rating": 4,
+            "problem_solving_rating": 5,
+            "culture_fit_rating": 5,
+            "overall_rating": 4,
+            "feedback": "Outstanding",
+            "recommendation": "hire"
+        }
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_completed_interview_cannot_be_rescheduled(self):
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            status="completed",
+            technical_rating=4,
+            communication_rating=4,
+            problem_solving_rating=5,
+            culture_fit_rating=5,
+            overall_rating=4,
+            feedback="Yes",
+            recommendation="hire",
+            created_by=self.hr_user
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        url = f"/api/applications/interviews/{interview.id}/"
+        response = self.client.patch(url, {"scheduled_at": timezone.now() + timezone.timedelta(days=2)}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_interview_history_survives_candidate_hiring(self):
+        Interview.objects.create(
+            application=self.app,
+            round_name="Tech 1",
+            round_number=1,
+            status="completed",
+            technical_rating=4,
+            communication_rating=4,
+            problem_solving_rating=5,
+            culture_fit_rating=5,
+            overall_rating=4,
+            feedback="Yes",
+            recommendation="hire",
+            created_by=self.hr_user
+        )
+        
+        self.client.force_authenticate(user=self.hr_user)
+        status_url = f"/api/applications/{self.app.id}/status/"
+        response = self.client.patch(status_url, {"application_status": "hired"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.app.interviews.count(), 1)
+
+
+class InterviewAuditTestCase(InterviewTestCaseBase):
+    def test_audit_logs_construction(self):
+        self.client.force_authenticate(user=self.admin_user)
+        
+        response = self.client.get("/api/applications/admin/activity-log/")
+        initial_count = len([x for x in response.data if "interview_" in x["id"]])
+        
+        interview = Interview.objects.create(
+            application=self.app,
+            round_name="Round Audit",
+            round_number=1,
+            status="scheduled",
+            created_by=self.hr_user
+        )
+        
+        response = self.client.get("/api/applications/admin/activity-log/")
+        scheduled_logs = [x for x in response.data if x["type"] == "interview_scheduled"]
+        self.assertTrue(len(scheduled_logs) > 0)
+        self.assertIn("scheduled for candidate", scheduled_logs[0]["message"])
+        
+        interview.created_at = timezone.now() - timezone.timedelta(seconds=10)
+        interview.save()
+        
+        response = self.client.get("/api/applications/admin/activity-log/")
+        rescheduled_logs = [x for x in response.data if x["type"] == "interview_rescheduled"]
+        self.assertTrue(len(rescheduled_logs) > 0)
+        self.assertIn("rescheduled for candidate", rescheduled_logs[0]["message"])
+
+
+

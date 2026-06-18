@@ -1,12 +1,541 @@
+/* ScreenAI Global Design System CSS */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Theme Colors */
+  --screenai-bg: #0f172a;
+  --screenai-surface: #1e293b;
+  --screenai-surface-elevated: #334155;
+  --screenai-border: #475569;
+  
+  /* Text Colors */
+  --sa-text-primary: #f8fafc;
+  --sa-text-secondary: #cbd5e1;
+  --sa-text-muted: #94a3b8;
+  --sa-placeholder: #64748b;
+
+  --screenai-text: var(--sa-text-primary);
+  --screenai-text-secondary: var(--sa-text-secondary);
+  --screenai-text-muted: var(--sa-text-muted);
+  
+  /* Accents */
+  --screenai-primary: #6366f1;
+  --screenai-primary-hover: #4f46e5;
+  --screenai-success: #10b981;
+  --screenai-warning: #f59e0b;
+  --screenai-danger: #ef4444;
+  --screenai-info: #06b6d4;
+  
+  /* Layout and Spacing */
+  --screenai-radius: 0.75rem;
+  --screenai-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --screenai-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
 body {
   margin: 0;
-  background-color: #f8f9fa;
+  padding: 0;
+  background-color: var(--screenai-bg);
+  color: var(--screenai-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.card {
-  border-radius: 12px;
+/* Custom Webkit scrollbar styles for dark dashboard */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--screenai-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--screenai-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--screenai-text-muted);
 }
 
-textarea {
-  min-height: 100px;
+/* Common ScreenAI Dashboard Layout Structure */
+.screenai-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.screenai-workspace {
+  display: flex;
+  flex: 1;
+  min-height: calc(100vh - 56px); /* subtract header navbar height */
+}
+
+/* Sidebar navigation */
+.screenai-sidebar {
+  width: 260px;
+  background-color: var(--screenai-surface);
+  border-right: 1px solid var(--screenai-border);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.screenai-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--screenai-radius);
+  color: var(--screenai-text-secondary);
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+  font-weight: 500;
+  font-size: 0.925rem;
+  transition: all 0.2s ease;
+  margin-bottom: 0.25rem;
+  text-decoration: none;
+}
+
+.screenai-sidebar-item:hover {
+  color: var(--screenai-text);
+  background-color: var(--screenai-surface-elevated);
+  text-decoration: none;
+}
+
+.screenai-sidebar-item.active {
+  color: var(--screenai-text);
+  background-color: var(--screenai-primary);
+}
+
+/* Content Area */
+.screenai-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+  max-width: calc(100% - 260px);
+}
+
+/* Standardized Panel / Card containers */
+.screenai-card {
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  padding: 1.5rem;
+  box-shadow: var(--screenai-shadow);
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-bottom: 1.5rem;
+}
+
+.screenai-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--screenai-shadow-lg);
+}
+
+/* Radial metrics or stat values */
+.screenai-metric-val {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.screenai-metric-label {
+  color: var(--screenai-text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+/* Forms controls within dashboards */
+.screenai-app input,
+.screenai-app select,
+.screenai-app textarea {
+  background-color: var(--screenai-bg);
+  border: 1px solid var(--screenai-border);
+  color: var(--screenai-text);
+  border-radius: 0.5rem;
+}
+
+.screenai-app input::placeholder,
+.screenai-app textarea::placeholder {
+  color: var(--sa-placeholder) !important;
+  opacity: 1;
+}
+
+.screenai-app input:focus,
+.screenai-app select:focus,
+.screenai-app textarea:focus {
+  background-color: var(--screenai-bg);
+  border-color: var(--screenai-primary);
+  color: var(--screenai-text);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  outline: none;
+}
+
+.screenai-app input:disabled,
+.screenai-app select:disabled,
+.screenai-app textarea:disabled {
+  background-color: var(--screenai-surface);
+  color: var(--screenai-text-muted);
+}
+
+/* Unified Split Pane Layout (Three-part layout) */
+.screenai-split-pane {
+  display: flex;
+  gap: 1.5rem;
+  height: calc(100vh - 180px);
+  min-height: 500px;
+}
+
+.screenai-pane-left {
+  flex: 0 0 320px;
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.screenai-pane-right {
+  flex: 1;
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  overflow-y: auto;
+  padding: 2rem;
+  position: relative;
+}
+
+/* Responsive sidebar toggle helper */
+@media (max-width: 992px) {
+  .screenai-workspace {
+    flex-direction: column;
+  }
+  .screenai-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--screenai-border);
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.75rem 1rem;
+    height: auto;
+  }
+  .screenai-sidebar-item {
+    margin-bottom: 0;
+    margin-right: 0.5rem;
+    white-space: nowrap;
+    width: auto;
+  }
+  .screenai-content {
+    max-width: 100%;
+  }
+  .screenai-split-pane {
+    flex-direction: column;
+    height: auto;
+  }
+  .screenai-pane-left {
+    flex: 1;
+    max-height: 300px;
+  }
+}
+
+/* Action Dropdown Menu */
+.screenai-dropdown-menu {
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  box-shadow: var(--screenai-shadow-lg);
+}
+
+.screenai-dropdown-item {
+  color: var(--screenai-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.screenai-dropdown-item:hover {
+  background-color: var(--screenai-surface-elevated);
+  color: var(--screenai-text);
+}
+
+/* Timeline components */
+.screenai-timeline {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.screenai-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 9px;
+  width: 2px;
+  background-color: var(--screenai-border);
+}
+
+.screenai-timeline-item {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.screenai-timeline-dot {
+  position: absolute;
+  left: -28px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--screenai-border);
+  border: 2px solid var(--screenai-surface);
+}
+
+.screenai-timeline-dot.completed {
+  background-color: var(--screenai-success);
+}
+
+.screenai-timeline-dot.scheduled {
+  background-color: var(--screenai-warning);
+}
+
+.screenai-timeline-dot.cancelled {
+  background-color: var(--screenai-danger);
+}
+
+/* Modal Overlay & Modal Window */
+.screenai-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  backdrop-filter: blur(4px);
+  padding: 1rem;
+}
+
+.screenai-modal-content {
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  width: 100%;
+  max-width: 600px;
+  padding: 2rem;
+  box-shadow: var(--screenai-shadow-lg);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Candidate workspace application list cards */
+.application-item {
+  background-color: var(--screenai-bg);
+  border: 1px solid var(--screenai-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.application-item:hover {
+  background-color: var(--screenai-surface-elevated);
+  border-color: var(--screenai-primary);
+}
+
+.application-item.selected {
+  border-color: var(--screenai-primary);
+  background-color: var(--screenai-surface-elevated);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+/* Custom modal styling fallback mappings */
+.custom-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  backdrop-filter: blur(4px);
+  padding: 1rem;
+}
+
+.custom-modal-content {
+  background-color: var(--screenai-surface);
+  border: 1px solid var(--screenai-border);
+  border-radius: var(--screenai-radius);
+  width: 100%;
+  max-width: 600px;
+  padding: 2rem;
+  box-shadow: var(--screenai-shadow-lg);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* High Contrast Class Overrides */
+.text-muted, .text-muted-50, .small.text-muted {
+  color: var(--sa-text-muted) !important;
+}
+.text-secondary {
+  color: var(--sa-text-secondary) !important;
+}
+.text-white-50 {
+  color: var(--sa-text-secondary) !important;
+}
+.text-dark-50 {
+  color: var(--sa-text-secondary) !important;
+}
+.text-black-50 {
+  color: var(--sa-text-secondary) !important;
+}
+.text-secondary-subtle {
+  color: var(--sa-text-muted) !important;
+}
+
+/* Specific placeholder text colors inside fields */
+.screenai-app input::placeholder,
+.screenai-app textarea::placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: var(--sa-placeholder) !important;
+  opacity: 1 !important;
+}
+.screenai-app input::-webkit-input-placeholder,
+.screenai-app textarea::-webkit-input-placeholder,
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: var(--sa-placeholder) !important;
+  opacity: 1 !important;
+}
+
+/* Pane and drawer layout scrolling rules */
+.screenai-pane-left, .screenai-pane-right {
+  scrollbar-width: thin;
+  scrollbar-color: var(--screenai-border) var(--screenai-bg);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Button sizing and focus states overrides */
+.btn:focus, .form-select:focus, .form-control:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4) !important;
+}
+
+/* Modal sizing helper */
+@media (max-width: 576px) {
+  .custom-modal-content, .screenai-modal-content {
+    padding: 1.25rem !important;
+    margin: 0.5rem !important;
+    max-height: 95vh !important;
+  }
+}
+
+/* Hover & focus concise preview rules */
+.screenai-card-interactive {
+  position: relative !important;
+  cursor: pointer !important;
+  outline: none !important;
+}
+
+.screenai-card-interactive:focus-visible {
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.6) !important;
+}
+
+.screenai-hover-preview {
+  position: absolute;
+  top: 105%;
+  left: 0;
+  width: 280px;
+  background-color: var(--screenai-surface-elevated) !important;
+  border: 1px solid var(--screenai-border) !important;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+  transform: translateY(4px);
+}
+
+.screenai-hover-preview-right {
+  right: 0 !important;
+  left: auto !important;
+}
+
+.screenai-card-interactive:hover .screenai-hover-preview,
+.screenai-card-interactive:focus-within .screenai-hover-preview {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.screenai-preview-item {
+  border-bottom: 1px solid var(--screenai-border);
+  padding: 4px 0;
+}
+.screenai-preview-item:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 768px) {
+  .screenai-hover-preview {
+    position: static !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+    transform: none !important;
+    box-shadow: none !important;
+    background-color: rgba(255, 255, 255, 0.03) !important;
+  }
+}
+
+/* Side drawer styling */
+.screenai-drawer-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.screenai-drawer {
+  width: 450px;
+  max-width: 90vw;
+  height: 100%;
+  box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.25s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }

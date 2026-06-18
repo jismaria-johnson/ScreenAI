@@ -1,28 +1,27 @@
 import {
   Route,
   Routes,
+  Navigate,
+  useLocation,
 } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-import AddJob from "./pages/AddJob";
-import EditJob from "./pages/EditJob";
-import EditProfile from "./pages/EditProfile";
 import Home from "./pages/Home";
-import HRApplications from "./pages/HRApplications";
 import HRDashboard from "./pages/HRDashboard";
 import Login from "./pages/Login";
-import MyJobs from "./pages/MyJobs";
-import Profile from "./pages/Profile";
 import PublicApplyJob from "./pages/PublicApplyJob";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
+  const location = useLocation();
+  const showNavbar = !["/hr-dashboard", "/admin-dashboard"].includes(location.pathname);
+
   return (
-    <>
-      <Navbar />
+    <div className="screenai-app">
+      {showNavbar && <Navbar />}
 
       <Routes>
         <Route
@@ -69,68 +68,32 @@ function App() {
 
         <Route
           path="/my-jobs"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <MyJobs />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=jobs" replace />}
         />
 
         <Route
           path="/add-job"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <AddJob />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=jobs" replace />}
         />
 
         <Route
           path="/edit-job/:jobId"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <EditJob />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=jobs" replace />}
         />
 
         <Route
           path="/hr-applications"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <HRApplications />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=applications" replace />}
         />
 
         <Route
           path="/profile"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <Profile />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=profile" replace />}
         />
 
         <Route
           path="/edit-profile"
-          element={
-            <ProtectedRoute
-              allowedRoles={["hr"]}
-            >
-              <EditProfile />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hr-dashboard?tab=profile" replace />}
         />
 
         <Route
@@ -144,7 +107,7 @@ function App() {
           }
         />
       </Routes>
-    </>
+    </div>
   );
 }
 
