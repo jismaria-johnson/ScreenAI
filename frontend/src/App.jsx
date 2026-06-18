@@ -17,7 +17,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   const location = useLocation();
-  const showNavbar = !["/hr-dashboard", "/admin-dashboard"].includes(location.pathname);
+  const showNavbar = !location.pathname.startsWith("/hr-dashboard") && !location.pathname.startsWith("/admin-dashboard");
 
   return (
     <div className="screenai-app">

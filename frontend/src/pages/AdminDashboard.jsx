@@ -599,29 +599,21 @@ function AdminDashboard() {
             <button onClick={fetchAdminData} className="btn btn-xs btn-outline-secondary py-1 px-3 d-flex align-items-center gap-1">
               🔄 Sync Platform Data
             </button>
-            <div className="dropdown">
-              <button 
-                className="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-2" 
-                type="button" 
-                id="adminAccountDropdown" 
-                data-bs-toggle="dropdown" 
-                aria-expanded="false"
-              >
-                👤 System Admin
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow" aria-labelledby="adminAccountDropdown" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-                <li className="dropdown-header text-muted small">admin@screenai.com</li>
-                <li><hr className="dropdown-divider" style={{ borderColor: "var(--screenai-border)" }} /></li>
-                <li>
-                  <button className="dropdown-item text-danger" onClick={() => {
-                    clearAuthData();
-                    navigate("/", { replace: true });
-                  }}>
-                    🚪 Logout
-                  </button>
-                </li>
-              </ul>
-            </div>
+            <span className="text-secondary small fw-bold">
+              👤 System Admin
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm fw-bold"
+              onClick={() => {
+                clearAuthData();
+                localStorage.clear();
+                sessionStorage.clear();
+                navigate("/", { replace: true });
+              }}
+            >
+              🚪 Logout
+            </button>
           </div>
         </div>
 

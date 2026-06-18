@@ -764,34 +764,21 @@ function HRDashboard() {
             <button onClick={() => fetchDashboardData()} className="btn btn-xs btn-outline-secondary py-1 px-3 d-flex align-items-center gap-1">
               🔄 Sync Platform Data
             </button>
-            <div className="dropdown">
-              <button 
-                className="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-2 text-capitalize" 
-                type="button" 
-                id="hrAccountDropdown" 
-                data-bs-toggle="dropdown" 
-                aria-expanded="false"
-              >
-                👤 {profile?.first_name ? `${profile.first_name} ${profile.last_name || ""}` : "Recruiter"}
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow" aria-labelledby="hrAccountDropdown" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-                <li className="dropdown-header text-muted small">{profile?.email || "recruiter@screenai.com"}</li>
-                <li><hr className="dropdown-divider" style={{ borderColor: "var(--screenai-border)" }} /></li>
-                <li>
-                  <button className="dropdown-item" onClick={() => handleTabChange("profile")}>
-                    👤 Profile
-                  </button>
-                </li>
-                <li>
-                  <button className="dropdown-item text-danger" onClick={() => {
-                    clearAuthData();
-                    navigate("/", { replace: true });
-                  }}>
-                    🚪 Logout
-                  </button>
-                </li>
-              </ul>
-            </div>
+            <span className="text-secondary small fw-bold">
+              👤 {profile?.first_name ? `${profile.first_name} ${profile.last_name || ""}` : "Recruiter"}
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm fw-bold"
+              onClick={() => {
+                clearAuthData();
+                localStorage.clear();
+                sessionStorage.clear();
+                navigate("/", { replace: true });
+              }}
+            >
+              🚪 Logout
+            </button>
           </div>
         </div>
 
@@ -1767,13 +1754,13 @@ function HRDashboard() {
                           <p className="text-muted small mb-0">No AI evaluation available</p>
                         ) : (
                           <div>
-                            <div className="d-flex justify-content-between align-items-center mb-3 p-2.5 rounded bg-dark-subtle border border-secondary">
+                            <div className="d-flex justify-content-between align-items-center mb-3 p-2.5 rounded screenai-evaluation-card">
                               <span className="text-secondary fw-semibold">Overall Compatibility:</span>
                               <span className="fs-5 text-primary fw-bold">{selectedApplication.ai_score}/100</span>
                             </div>
 
                             {showAiBreakdown && (
-                              <div className="row g-2 mb-3 bg-dark-subtle p-2.5 rounded border border-secondary-subtle">
+                              <div className="row g-2 mb-3 p-2.5 rounded screenai-summary-box">
                                 <div className="col-sm-6">
                                   <span className="text-secondary small">Skills Match ({selectedApplication.skills_score}/30):</span>
                                   <div className="progress mt-1" style={{ height: "6px" }}>
@@ -1813,16 +1800,16 @@ function HRDashboard() {
                               </div>
                             )}
 
-                            <div className="bg-dark-subtle p-2.5 rounded text-secondary small mb-2 border border-secondary-subtle">
-                              <strong className="text-light">Experience Summary:</strong>
+                            <div className="p-2.5 rounded text-secondary small mb-2 screenai-summary-box">
+                              <strong>Experience Summary:</strong>
                               <p className="mb-0 mt-1">{selectedApplication.experience_summary || "Not evaluated"}</p>
                             </div>
-                            <div className="bg-dark-subtle p-2.5 rounded text-secondary small mb-2 border border-secondary-subtle">
-                              <strong className="text-light">Projects Summary:</strong>
+                            <div className="p-2.5 rounded text-secondary small mb-2 screenai-summary-box">
+                              <strong>Projects Summary:</strong>
                               <p className="mb-0 mt-1">{selectedApplication.project_summary || "Not evaluated"}</p>
                             </div>
-                            <div className="bg-dark-subtle p-2.5 rounded text-secondary small border border-secondary-subtle">
-                              <strong className="text-light">AI Feedback Summary:</strong>
+                            <div className="p-2.5 rounded text-secondary small screenai-summary-box">
+                              <strong>AI Feedback Summary:</strong>
                               <p className="mb-0 mt-1">{selectedApplication.ai_feedback || "Not evaluated"}</p>
                             </div>
                           </div>
@@ -1865,7 +1852,7 @@ function HRDashboard() {
                                       : "scheduled"
                                   }`}
                                 />
-                                <div className="p-3 rounded border border-secondary bg-dark-subtle">
+                                <div className="p-3 rounded screenai-interview-card">
                                   <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
                                     <div>
                                       <h6 className="fw-bold text-white mb-0" style={{ fontSize: "13px" }}>

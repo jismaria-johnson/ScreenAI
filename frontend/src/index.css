@@ -539,3 +539,27 @@ textarea::-webkit-input-placeholder {
     transform: translateX(0);
   }
 }
+
+/* Custom contrast classes for AI summaries and interview rounds */
+.screenai-app .screenai-evaluation-card,
+.screenai-app .screenai-interview-card,
+.screenai-app .screenai-summary-box {
+  background-color: var(--screenai-surface-elevated) !important;
+  border: 1px solid var(--screenai-border) !important;
+  color: var(--sa-text-primary) !important;
+}
+
+.screenai-app .screenai-evaluation-card p,
+.screenai-app .screenai-interview-card p,
+.screenai-app .screenai-summary-box p,
+.screenai-app .screenai-evaluation-card small,
+.screenai-app .screenai-interview-card small,
+.screenai-app .screenai-summary-box small {
+  color: var(--sa-text-secondary) !important;
+}
+
+.screenai-app .screenai-evaluation-card strong,
+.screenai-app .screenai-interview-card strong,
+.screenai-app .screenai-summary-box strong {
+  color: var(--sa-text-primary) !important;
+}
