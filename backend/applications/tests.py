@@ -1615,4 +1615,132 @@ class InterviewAuditTestCase(InterviewTestCaseBase):
         self.assertEqual(rescheduled_logs[0]["target_id"], str(interview_id))
 
 
+class Phase2Stage1To3TestCase(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.hr_user = User.objects.create_user(username="hr_test_p2", password="password", email="hr@test.com")
+        self.candidate_user = User.objects.create_user(username="cand_test_p2", password="password", email="cand@test.com")
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Dev",
+            company_name="Corp",
+            job_description="Description",
+            required_skills="Python",
+            required_experience="1 year",
+            status="open"
+        )
+        self.resume_file = SimpleUploadedFile(
+            "resume.pdf",
+            b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+            content_type="application/pdf"
+        )
 
+    def test_date_range_validation(self):
+        from applications.utils import parse_and_validate_date_range
+        from rest_framework.exceptions import ValidationError
+        
+        # Test valid
+        date_from, date_to = parse_and_validate_date_range("2026-06-01", "2026-06-10")
+        self.assertIsNotNone(date_from)
+        self.assertIsNotNone(date_to)
+        self.assertTrue(date_from < date_to)
+
+        # Test reversed
+        with self.assertRaises(ValidationError):
+            parse_and_validate_date_range("2026-06-10", "2026-06-01")
+
+        # Test invalid string
+        with self.assertRaises(ValidationError):
+            parse_and_validate_date_range("invalid-date", "2026-06-01")
+
+    def test_candidate_identity_registered_constraint(self):
+        from applications.models import CandidateIdentity
+        from django.db import IntegrityError
+        
+        # registered identity without user should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            CandidateIdentity.objects.create(
+                identity_type="registered",
+                candidate_user=None
+            )
+
+    def test_candidate_identity_public_constraint(self):
+        from applications.models import CandidateIdentity
+        from django.db import IntegrityError
+
+        # public identity without email should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            CandidateIdentity.objects.create(
+                identity_type="public",
+                normalized_email=None,
+                public_email_key=None
+            )
+
+    def test_candidate_identity_anonymous_constraint(self):
+        from applications.models import CandidateIdentity
+        from django.db import IntegrityError
+
+        # anonymous identity with user or email key should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            CandidateIdentity.objects.create(
+                identity_type="anonymous",
+                candidate_user=self.candidate_user
+            )
+
+    def test_candidate_identity_protect_user_deletion(self):
+        from applications.models import CandidateIdentity
+        from django.db.models import ProtectedError
+
+        identity = CandidateIdentity.objects.create(
+            identity_type="registered",
+            candidate_user=self.candidate_user
+        )
+
+        # Deleting the user should be protected and raise ProtectedError
+        with self.assertRaises(ProtectedError):
+            self.candidate_user.delete()
+
+    def test_identity_assignment_service(self):
+        from applications.services import get_or_create_candidate_identity
+        
+        # Test registered application
+        app_reg = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_user,
+            resume=self.resume_file
+        )
+        ident_reg = get_or_create_candidate_identity(app_reg)
+        self.assertEqual(ident_reg.identity_type, "registered")
+        self.assertEqual(ident_reg.candidate_user, self.candidate_user)
+
+        # Test public valid email
+        app_pub = Application.objects.create(
+            job=self.job,
+            candidate_name="Public Cand",
+            candidate_email="Pub@test.com",
+            resume=self.resume_file
+        )
+        ident_pub = get_or_create_candidate_identity(app_pub)
+        self.assertEqual(ident_pub.identity_type, "public")
+        self.assertEqual(ident_pub.public_email_key, "pub@test.com")
+
+        # Test public valid email case-insensitivity/spacing grouping
+        app_pub_dup = Application.objects.create(
+            job=self.job,
+            candidate_name="Public Cand Dup",
+            candidate_email=" PUB@test.com ",
+            resume=self.resume_file
+        )
+        ident_pub_dup = get_or_create_candidate_identity(app_pub_dup)
+        self.assertEqual(ident_pub.pk, ident_pub_dup.pk)
+
+        # Test anonymous missing email
+        app_anon = Application.objects.create(
+            job=self.job,
+            candidate_name="Anon Cand",
+            candidate_email="",
+            resume=self.resume_file
+        )
+        ident_anon = get_or_create_candidate_identity(app_anon)
+        self.assertEqual(ident_anon.identity_type, "anonymous")
+        self.assertIsNone(ident_anon.public_email_key)

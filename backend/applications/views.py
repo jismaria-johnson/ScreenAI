@@ -92,6 +92,10 @@ class ApplyJobView(
             candidate=self.request.user
         )
 
+        from applications.services import get_or_create_candidate_identity
+        application.candidate_identity = get_or_create_candidate_identity(application)
+        application.save(update_fields=["candidate_identity"])
+
         application.evaluate_and_save()
 
         from accounts.utils import log_audit
@@ -548,6 +552,10 @@ class PublicApplicationCreateView(
             job=job,
             candidate=None,
         )
+
+        from applications.services import get_or_create_candidate_identity
+        application.candidate_identity = get_or_create_candidate_identity(application)
+        application.save(update_fields=["candidate_identity"])
 
         application.evaluate_and_save()
 

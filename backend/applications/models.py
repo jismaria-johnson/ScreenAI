@@ -1,8 +1,56 @@
+import uuid
 from django.contrib.auth.models import User
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 from jobs.models import Job
+
+
+class CandidateIdentity(models.Model):
+    IDENTITY_TYPE_CHOICES = (
+        ("registered", "Registered"),
+        ("public", "Public"),
+        ("anonymous", "Anonymous"),
+    )
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    identity_type = models.CharField(max_length=20, choices=IDENTITY_TYPE_CHOICES, db_index=True)
+    candidate_user = models.OneToOneField(
+        User, on_delete=models.PROTECT, null=True, blank=True, related_name="candidate_identity"
+    )
+    normalized_email = models.EmailField(null=True, blank=True, db_index=True)
+    public_email_key = models.EmailField(null=True, blank=True, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(identity_type="registered") | (
+                    models.Q(candidate_user__isnull=False) & models.Q(public_email_key__isnull=True)
+                ),
+                name="registered_identity_integrity"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(identity_type="public") | (
+                    models.Q(candidate_user__isnull=True) & 
+                    models.Q(normalized_email__isnull=False) & 
+                    models.Q(public_email_key__isnull=False)
+                ),
+                name="public_identity_integrity"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(identity_type="anonymous") | (
+                    models.Q(candidate_user__isnull=True) & 
+                    models.Q(normalized_email__isnull=True) & 
+                    models.Q(public_email_key__isnull=True)
+                ),
+                name="anonymous_identity_integrity"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.identity_type} - {self.uuid}"
 
 
 class Application(models.Model):
@@ -28,11 +76,19 @@ class Application(models.Model):
         blank=True,
     )
 
+    candidate_identity = models.ForeignKey(
+        CandidateIdentity,
+        on_delete=models.PROTECT,
+        related_name="applications",
+        null=True
+    )
+
     job = models.ForeignKey(
         Job,
         on_delete=models.CASCADE,
         related_name="applications",
     )
+
 
     # New fields for public applications (candidates without user account)
     candidate_name = models.CharField(
