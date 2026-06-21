@@ -13,6 +13,7 @@ class AdminApplicationDirectorySerializer(serializers.ModelSerializer):
     latest_interview_status = serializers.CharField(read_only=True, default=None)
     latest_progression_stage = serializers.CharField(read_only=True, default=None)
     resume_available = serializers.SerializerMethodField()
+    resume_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Application
@@ -30,7 +31,8 @@ class AdminApplicationDirectorySerializer(serializers.ModelSerializer):
             "interview_count",
             "latest_interview_status",
             "latest_progression_stage",
-            "resume_available"
+            "resume_available",
+            "resume_url"
         ]
 
     def get_candidate_uuid(self, obj):
@@ -84,6 +86,11 @@ class AdminApplicationDirectorySerializer(serializers.ModelSerializer):
 
     def get_resume_available(self, obj):
         return bool(obj.resume)
+
+    def get_resume_url(self, obj):
+        if not obj.resume:
+            return None
+        return f"/applications/admin/directory/{obj.id}/resume/"
 
 
 class AdminCandidateDirectorySerializer(serializers.ModelSerializer):
@@ -238,6 +245,7 @@ class AdminApplicationDetailSerializer(serializers.ModelSerializer):
     counts = serializers.SerializerMethodField()
     interviews_url = serializers.SerializerMethodField()
     progressions_url = serializers.SerializerMethodField()
+    resume_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Application
@@ -252,7 +260,8 @@ class AdminApplicationDetailSerializer(serializers.ModelSerializer):
             "ai_evaluation",
             "counts",
             "interviews_url",
-            "progressions_url"
+            "progressions_url",
+            "resume_url"
         ]
 
     def get_candidate_uuid(self, obj):
@@ -381,6 +390,11 @@ class AdminApplicationDetailSerializer(serializers.ModelSerializer):
 
     def get_progressions_url(self, obj):
         return f"/applications/admin/directory/{obj.id}/progressions/"
+
+    def get_resume_url(self, obj):
+        if not obj.resume:
+            return None
+        return f"/applications/admin/directory/{obj.id}/resume/"
 
 
 class AdminInterviewDetailSerializer(serializers.ModelSerializer):

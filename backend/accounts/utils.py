@@ -2,25 +2,45 @@ import ipaddress
 from django.conf import settings
 from accounts.models import AuditLog
 
+SENSITIVE_METADATA_KEY_PARTS = {
+    "password", "token", "access", "refresh", "secret", "authorization"
+}
+SAFE_METADATA_KEYS = {"access_role"}
+
+def _normalize_key(key):
+    if not isinstance(key, str):
+        return str(key)
+    normalized = key.lower()
+    normalized = normalized.replace("-", "_").replace(" ", "_")
+    return normalized
+
+def _is_sensitive_key(key):
+    norm_key = _normalize_key(key)
+    if norm_key in SAFE_METADATA_KEYS:
+        return False
+    for part in SENSITIVE_METADATA_KEY_PARTS:
+        if part in norm_key:
+            return True
+    return False
+
 def sanitize_metadata(data):
     """
-    Recursively removes sensitive keys from audit log metadata.
+    Recursively removes sensitive keys from audit log metadata, preserving lists, tuples, and dicts,
+    without mutating the original object.
     """
-    if not isinstance(data, dict):
-        return data
-    sensitive_keys = {
-        "password", "token", "access", "refresh", "secret", "authorization",
-        "current_password", "new_password", "confirm_password"
-    }
-    sanitized = {}
-    for k, v in data.items():
-        if any(sk in k.lower() for sk in sensitive_keys):
-            continue
-        if isinstance(v, dict):
+    if isinstance(data, dict):
+        sanitized = {}
+        for k, v in data.items():
+            if _is_sensitive_key(k):
+                continue
             sanitized[k] = sanitize_metadata(v)
-        else:
-            sanitized[k] = v
-    return sanitized
+        return sanitized
+    elif isinstance(data, list):
+        return [sanitize_metadata(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(sanitize_metadata(item) for item in data)
+    else:
+        return data
 
 def is_valid_ip(ip_str):
     if not ip_str:

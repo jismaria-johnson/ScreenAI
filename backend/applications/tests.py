@@ -1910,8 +1910,8 @@ class AdminApplicationDirectoryTestCase(APITestCase):
             self.assertNotIn("normalized_email", item)
             # Ensure candidate_uuid is a valid UUID string
             self.assertIsNotNone(item["candidate_uuid"])
-            # Ensure resume_url is not present until streaming endpoints are added
-            self.assertNotIn("resume_url", item)
+            # Ensure resume_url is present now that streaming endpoints are added
+            self.assertIn("resume_url", item)
 
         # Verify specific fields in registered candidate app serialization
         app_reg_data = next(x for x in results if x["id"] == self.app_reg.id)
@@ -1996,7 +1996,7 @@ class AdminApplicationDirectoryTestCase(APITestCase):
         self.assertEqual(res.data["count"], 2)
 
         # 7. date_from / date_to boundaries (inclusive)
-        today = timezone.now().date().isoformat()
+        today = timezone.localdate().isoformat()
         res = self.client.get("/api/applications/admin/directory/", {"date_from": today, "date_to": today})
         self.assertEqual(res.data["count"], 3)
 
@@ -2761,6 +2761,531 @@ class AdminCandidateDetailWorkspaceTestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         # Expected bounded count: should run minimal queries (e.g. <= 4 queries)
         self.assertLessEqual(len(ctx.captured_queries), 4)
+
+
+import os
+import shutil
+import tempfile
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings, RequestFactory
+from django.urls import reverse
+from rest_framework.test import force_authenticate
+from accounts.authentication import CustomJWTAuthentication
+from accounts.models import Profile, AuditLog
+from screenai.settings import CORS_EXPOSE_HEADERS
+from applications.admin_serializers import (
+    AdminApplicationDirectorySerializer,
+    AdminApplicationDetailSerializer,
+    AdminCandidateSummarySerializer
+)
+
+TEMP_MEDIA_ROOT = tempfile.mkdtemp()
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
+class AdminApplicationResumeViewTestCase(APITestCase):
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        # 1. Create users & profiles
+        self.admin_user = User.objects.create_superuser(
+            username="resume_admin", password="password123", email="resume_admin@example.com"
+        )
+        Profile.objects.create(user=self.admin_user, role="admin")
+
+        self.hr_user = User.objects.create_user(
+            username="resume_hr", password="password123", email="resume_hr@example.com"
+        )
+        Profile.objects.create(user=self.hr_user, role="hr")
+
+        self.other_hr = User.objects.create_user(
+            username="resume_other_hr", password="password123", email="resume_other_hr@example.com"
+        )
+        Profile.objects.create(user=self.other_hr, role="hr")
+
+        self.candidate_user = User.objects.create_user(
+            username="resume_cand", password="password123", email="resume_cand@example.com",
+            first_name="Jane", last_name="Doe"
+        )
+        Profile.objects.create(user=self.candidate_user, role="candidate")
+
+        # 2. Create job owned by hr_user
+        from jobs.models import Job
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Python Developer",
+            company_name="Innovate",
+            location="Remote",
+            required_experience="2+ years",
+            status="open"
+        )
+
+        # 3. Valid PDF file starting with %PDF-
+        self.valid_pdf_content = b"%PDF-1.4\n%hello world"
+        self.valid_pdf = SimpleUploadedFile("jane_resume.pdf", self.valid_pdf_content, content_type="application/pdf")
+
+        # Create application with valid PDF
+        self.app = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_user,
+            resume=self.valid_pdf,
+            candidate_name="Jane Doe",
+            candidate_email="jane@example.com",
+            candidate_phone="1234567890",
+            ai_score=90
+        )
+        from applications.services import get_or_create_candidate_identity
+        self.app.candidate_identity = get_or_create_candidate_identity(self.app)
+        self.app.save()
+
+    def test_permissions_matrix(self):
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+
+        # 1. Anonymous user denied
+        self.client.force_authenticate(user=None)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Candidate denied
+        self.client.force_authenticate(user=self.candidate_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Unrelated recruiter denied
+        self.client.force_authenticate(user=self.other_hr)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 4. Active hiring recruiter allowed
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # 5. Staff/Superuser allowed
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_security_auth_restrictions(self):
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+
+        # Generate JWT token via login for recruiter
+        login_url = reverse("login")
+        login_res = self.client.post(login_url, {
+            "username": "resume_hr",
+            "password": "password123"
+        }, format="json")
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+        access_token = login_res.data["access"]
+
+        # 1. Suspended recruiter (is_active=False) denied
+        self.hr_user.is_active = False
+        self.hr_user.save()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(res.data["code"], "inactive_account")
+
+        # Reactivate recruiter
+        self.hr_user.is_active = True
+        self.hr_user.save()
+
+        # 2. Stale/revoked session (token version mismatch) denied
+        state = self.hr_user.security_state
+        state.token_version += 1
+        state.save()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(res.data["code"], "session_revoked")
+
+        # Get a fresh token
+        state.token_version = 0
+        state.save()
+        login_res = self.client.post(login_url, {
+            "username": "resume_hr",
+            "password": "password123"
+        }, format="json")
+        access_token = login_res.data["access"]
+
+        # 3. Forced-password restriction (must_change_password=True) denied
+        state.must_change_password = True
+        state.save()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res.data["code"], "password_change_required")
+
+        # Reset credentials
+        self.client.credentials()
+
+    def test_valid_response_streaming_content_and_headers(self):
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+        self.client.force_authenticate(user=self.admin_user)
+        
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        
+        # Verify content can be consumed successfully and matches
+        content = b"".join(res.streaming_content)
+        self.assertEqual(content, self.valid_pdf_content)
+
+        # Verify PDF headers are correct
+        self.assertEqual(res["Content-Type"], "application/pdf")
+        self.assertEqual(res["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(res["Cache-Control"], "private, no-store")
+        
+        # Django-generated Content-Disposition is safe
+        self.assertIn("attachment", res["Content-Disposition"])
+        self.assertIn('filename="resume_Jane_Doe.pdf"', res["Content-Disposition"])
+
+    def test_file_lifetime_and_cleanup(self):
+        from applications.admin_views import AdminApplicationResumeView
+        factory = RequestFactory()
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+        request = factory.get(url)
+        force_authenticate(request, user=self.admin_user)
+
+        view = AdminApplicationResumeView.as_view()
+        response = view(request, pk=self.app.id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # File remains open until streaming begins/completes
+        file_to_stream = response.file_to_stream
+        self.assertFalse(file_to_stream.closed)
+
+        # Response is closed correctly, closing the resource
+        response.close()
+        self.assertTrue(file_to_stream.closed)
+
+    def test_post_open_error_paths_close_handle(self):
+        # 1. Invalid signature post-open error path
+        invalid_sig_content = b"BAD_SIGNATURE"
+        invalid_pdf = SimpleUploadedFile("bad_sig.pdf", invalid_sig_content, content_type="application/pdf")
+        app_bad_sig = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_user,
+            resume=invalid_pdf,
+            candidate_name="Bad Sig",
+            candidate_email="badsig@example.com",
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_bad_sig.candidate_identity = get_or_create_candidate_identity(app_bad_sig)
+        app_bad_sig.save()
+
+        from applications.admin_views import AdminApplicationResumeView
+        factory = RequestFactory()
+        url = reverse("admin_application_resume_stream", kwargs={"pk": app_bad_sig.id})
+        request = factory.get(url)
+        force_authenticate(request, user=self.admin_user)
+
+        from django.db.models.fields.files import FieldFile
+        view = AdminApplicationResumeView.as_view()
+        
+        # Spy/capture the file handle open
+        opened_files = []
+        original_open = FieldFile.open
+        def open_spy(self, *args, **kwargs):
+            f = original_open(self, *args, **kwargs)
+            opened_files.append(f)
+            return f
+
+        with patch.object(FieldFile, 'open', open_spy):
+            res = view(request, pk=app_bad_sig.id)
+        
+        self.assertEqual(res.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+        self.assertTrue(len(opened_files) > 0)
+        self.assertTrue(opened_files[0].closed)
+
+        # 2. Audit log creation failure post-open error path
+        # Mock log_audit to raise exception
+        with patch("applications.admin_views.log_audit", side_effect=Exception("Audit failure")):
+            opened_files_audit = []
+            def open_spy_app(self, *args, **kwargs):
+                f = original_open(self, *args, **kwargs)
+                opened_files_audit.append(f)
+                return f
+
+            with patch.object(FieldFile, 'open', open_spy_app):
+                with self.assertRaises(Exception) as ctx:
+                    view(request, pk=self.app.id)
+
+            self.assertEqual(str(ctx.exception), "Audit failure")
+            self.assertTrue(len(opened_files_audit) > 0)
+            self.assertTrue(opened_files_audit[0].closed)
+
+    def test_malicious_candidate_names_cannot_inject_headers(self):
+        injected_name = "Jane\r\nInjected-Header: evil\r\nDoe"
+        app_injected = Application.objects.create(
+            job=self.job,
+            candidate_name=injected_name,
+            candidate_email="injected@example.com",
+            resume=SimpleUploadedFile("injected.pdf", self.valid_pdf_content, content_type="application/pdf"),
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_injected.candidate_identity = get_or_create_candidate_identity(app_injected)
+        app_injected.save()
+
+        url = reverse("admin_application_resume_stream", kwargs={"pk": app_injected.id})
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertNotIn("Injected-Header", res)
+        self.assertNotIn("\r", res["Content-Disposition"])
+        self.assertNotIn("\n", res["Content-Disposition"])
+
+    def test_missing_storage_object_returns_safe_404(self):
+        app_missing_file = Application.objects.create(
+            job=self.job,
+            candidate_name="No File",
+            candidate_email="nofile@example.com",
+            resume=SimpleUploadedFile("missing.pdf", self.valid_pdf_content, content_type="application/pdf"),
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_missing_file.candidate_identity = get_or_create_candidate_identity(app_missing_file)
+        app_missing_file.save()
+        
+        if os.path.exists(app_missing_file.resume.path):
+            os.remove(app_missing_file.resume.path)
+
+        url = reverse("admin_application_resume_stream", kwargs={"pk": app_missing_file.id})
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertNotIn(TEMP_MEDIA_ROOT, str(res.data))
+
+    def test_invalid_extension_returns_safe_415(self):
+        invalid_ext_file = SimpleUploadedFile("jane_resume.txt", self.valid_pdf_content, content_type="text/plain")
+        app_invalid_ext = Application.objects.create(
+            job=self.job,
+            candidate_name="Invalid Ext",
+            candidate_email="invext@example.com",
+            resume=invalid_ext_file,
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_invalid_ext.candidate_identity = get_or_create_candidate_identity(app_invalid_ext)
+        app_invalid_ext.save()
+
+        url = reverse("admin_application_resume_stream", kwargs={"pk": app_invalid_ext.id})
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_audit_log_counts(self):
+        AuditLog.objects.all().delete()
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        _ = b"".join(res.streaming_content)
+        
+        self.assertEqual(AuditLog.objects.count(), 1)
+        audit = AuditLog.objects.first()
+        self.assertEqual(audit.action, "resume_accessed")
+        self.assertEqual(audit.metadata["application_id"], self.app.id)
+        self.assertEqual(audit.metadata["job_id"], self.job.id)
+        self.assertEqual(audit.metadata["recruiter_id"], self.hr_user.id)
+        self.assertEqual(audit.metadata["access_role"], "admin")
+        
+        self.assertNotIn("path", audit.metadata)
+        self.assertNotIn("filename", audit.metadata)
+
+        self.client.force_authenticate(user=self.candidate_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(AuditLog.objects.count(), 1)
+
+    def test_serializer_placement_and_candidate_summary_exclusion(self):
+        dir_serializer = AdminApplicationDirectorySerializer(self.app)
+        self.assertIn("resume_url", dir_serializer.data)
+        self.assertEqual(dir_serializer.data["resume_url"], f"/applications/admin/directory/{self.app.id}/resume/")
+
+        detail_serializer = AdminApplicationDetailSerializer(self.app)
+        self.assertIn("resume_url", detail_serializer.data)
+        self.assertEqual(detail_serializer.data["resume_url"], f"/applications/admin/directory/{self.app.id}/resume/")
+
+        summary_serializer = AdminCandidateSummarySerializer(self.app.candidate_identity)
+        self.assertNotIn("resume_url", summary_serializer.data)
+
+        app_no_resume = Application.objects.create(
+            job=self.job,
+            candidate_name="No Resume",
+            candidate_email="noresume@example.com",
+            resume=None,
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_no_resume.candidate_identity = get_or_create_candidate_identity(app_no_resume)
+        app_no_resume.save()
+
+        dir_serializer_none = AdminApplicationDirectorySerializer(app_no_resume)
+        self.assertIsNone(dir_serializer_none.data["resume_url"])
+
+    def test_cors_headers_exposure(self):
+        self.assertIn("Content-Disposition", CORS_EXPOSE_HEADERS)
+
+    def test_fileresponse_construction_failure_closes_file_and_no_audit(self):
+        # Clean audit logs
+        AuditLog.objects.all().delete()
+
+        # Mock FileResponse construction to raise an Exception
+        from django.db.models.fields.files import FieldFile
+        from applications.admin_views import AdminApplicationResumeView
+        factory = RequestFactory()
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+        request = factory.get(url)
+        force_authenticate(request, user=self.admin_user)
+        view = AdminApplicationResumeView.as_view()
+
+        opened_files = []
+        original_open = FieldFile.open
+        def open_spy(self, *args, **kwargs):
+            f = original_open(self, *args, **kwargs)
+            opened_files.append(f)
+            return f
+
+        with patch("applications.admin_views.FileResponse", side_effect=Exception("FileResponse Error")):
+            with patch.object(FieldFile, 'open', open_spy):
+                res = view(request, pk=self.app.id)
+
+        self.assertEqual(res.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+        self.assertTrue(len(opened_files) > 0)
+        # Proven cleanup: check file handle is closed
+        self.assertTrue(opened_files[0].closed)
+        # Proven zero audit logs
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+    def test_audit_failure_after_fileresponse_construction_closes_file_and_propagates_error(self):
+        # Clean audit logs
+        AuditLog.objects.all().delete()
+
+        from django.db.models.fields.files import FieldFile
+        from applications.admin_views import AdminApplicationResumeView
+        factory = RequestFactory()
+        url = reverse("admin_application_resume_stream", kwargs={"pk": self.app.id})
+        request = factory.get(url)
+        force_authenticate(request, user=self.admin_user)
+        view = AdminApplicationResumeView.as_view()
+
+        opened_files = []
+        original_open = FieldFile.open
+        def open_spy(self, *args, **kwargs):
+            f = original_open(self, *args, **kwargs)
+            opened_files.append(f)
+            return f
+
+        with patch("applications.admin_views.log_audit", side_effect=Exception("Audit Log Error")):
+            with patch.object(FieldFile, 'open', open_spy):
+                with self.assertRaises(Exception) as ctx:
+                    view(request, pk=self.app.id)
+
+        self.assertEqual(str(ctx.exception), "Audit Log Error")
+        self.assertTrue(len(opened_files) > 0)
+        # Proven cleanup: check file handle is closed
+        self.assertTrue(opened_files[0].closed)
+        # Proven zero audit logs
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+    def test_extremely_long_and_malicious_candidate_names_capping(self):
+        malicious_long_name = "Jane_" + "A" * 200 + "\r\nInjected-Header: evil\r\n"
+        app_long_name = Application.objects.create(
+            job=self.job,
+            candidate_name=malicious_long_name,
+            candidate_email="longname@example.com",
+            resume=SimpleUploadedFile("longname.pdf", self.valid_pdf_content, content_type="application/pdf"),
+            ai_score=80
+        )
+        from applications.services import get_or_create_candidate_identity
+        app_long_name.candidate_identity = get_or_create_candidate_identity(app_long_name)
+        app_long_name.save()
+
+        url = reverse("admin_application_resume_stream", kwargs={"pk": app_long_name.id})
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        
+        # Verify candidate portion capped to 100 characters, preserving .pdf
+        content_disp = res["Content-Disposition"]
+        self.assertIn("attachment", content_disp)
+        self.assertNotIn("\r", content_disp)
+        self.assertNotIn("\n", content_disp)
+        self.assertNotIn("Injected-Header", res)
+        
+        # Extract filename
+        import re
+        match = re.search(r'filename="([^"]+)"', content_disp)
+        self.assertTrue(match)
+        filename = match.group(1)
+        self.assertTrue(filename.endswith(".pdf"))
+        # Candidate portion capped to 100 characters. "resume_" (7) + name capped (100) + ".pdf" (4) = 111 chars
+        self.assertEqual(len(filename), 111)
+
+    def test_recursive_audit_metadata_sanitization(self):
+        from accounts.utils import sanitize_metadata
+        
+        original_meta = {
+            "access_token": "secret_access",
+            "refresh_token": "secret_refresh",
+            "access_role": "admin",
+            "normal_key": "safe_value",
+            "authorization_header": "Bearer secret",
+            "user_password": "super_secret",
+            "client_secret": "hidden_secret",
+            "nested_dict": {
+                "access_token": "nested_secret",
+                "normal_nested": "safe_nested"
+            },
+            "nested_list": [
+                {
+                    "access_token": "list_secret",
+                    "safe_list": "safe_list_value"
+                },
+                "safe_string"
+            ],
+            "nested_tuple": (
+                {
+                    "refresh_token": "tuple_secret",
+                    "safe_tuple": "safe_tuple_value"
+                },
+                123
+            )
+        }
+
+        sanitized = sanitize_metadata(original_meta)
+
+        self.assertEqual(sanitized["access_role"], "admin")
+        self.assertEqual(sanitized["normal_key"], "safe_value")
+
+        self.assertNotIn("access_token", sanitized)
+        self.assertNotIn("refresh_token", sanitized)
+        self.assertNotIn("authorization_header", sanitized)
+        self.assertNotIn("user_password", sanitized)
+        self.assertNotIn("client_secret", sanitized)
+
+        self.assertEqual(sanitized["nested_dict"]["normal_nested"], "safe_nested")
+        self.assertNotIn("access_token", sanitized["nested_dict"])
+
+        self.assertEqual(sanitized["nested_list"][0]["safe_list"], "safe_list_value")
+        self.assertNotIn("access_token", sanitized["nested_list"][0])
+        self.assertEqual(sanitized["nested_list"][1], "safe_string")
+
+        self.assertEqual(sanitized["nested_tuple"][0]["safe_tuple"], "safe_tuple_value")
+        self.assertNotIn("refresh_token", sanitized["nested_tuple"][0])
+        self.assertEqual(sanitized["nested_tuple"][1], 123)
+        self.assertIsInstance(sanitized["nested_tuple"], tuple)
+
+        self.assertIn("access_token", original_meta)
+        self.assertIn("access_token", original_meta["nested_dict"])
+        self.assertIn("access_token", original_meta["nested_list"][0])
+        self.assertIn("refresh_token", original_meta["nested_tuple"][0])
 
 
 

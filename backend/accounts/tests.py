@@ -516,10 +516,10 @@ class ScreenAISecurityTestCase(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["target_label"], "Jane Candidate")
 
-        # 8. Date filters
+        # Date filters
         import datetime
         from django.utils import timezone
-        now = timezone.now()
+        now = timezone.localtime(timezone.now())
         yesterday = now - timezone.timedelta(days=1)
         tomorrow = now + timezone.timedelta(days=1)
         

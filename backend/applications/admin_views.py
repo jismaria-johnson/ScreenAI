@@ -347,7 +347,10 @@ class AdminSystemActivityListView(generics.ListAPIView):
             parsed_to = parse_datetime(date_to) or parse_date(date_to)
             if parsed_to is None:
                 raise ValidationError({"date_to": "Invalid date format. Use YYYY-MM-DD or ISO 8601 format."})
-            if isinstance(parsed_to, datetime.date) and not isinstance(parsed_to, datetime.datetime):
+            if isinstance(parsed_to, datetime.datetime):
+                if parsed_to.time() == datetime.time.min and ":" not in date_to:
+                    parsed_to = datetime.datetime.combine(parsed_to.date(), datetime.time.max)
+            elif isinstance(parsed_to, datetime.date):
                 parsed_to = datetime.datetime.combine(parsed_to, datetime.time.max)
             if timezone.is_aware(timezone.now()) and timezone.is_naive(parsed_to):
                 parsed_to = timezone.make_aware(parsed_to)
@@ -1474,6 +1477,144 @@ class AdminApplicationProgressionsListView(generics.ListAPIView):
             raise Http404("Application not found.")
 
         return CandidateProgression.objects.filter(application_id=pk).select_related('updated_by').order_by('-updated_at', '-id')
+
+
+from django.http import FileResponse
+from accounts.authentication import CustomJWTAuthentication
+from rest_framework import status
+import unicodedata
+import re
+
+class AdminApplicationResumeView(APIView):
+    authentication_classes = [CustomJWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            application = Application.objects.select_related("job", "job__hr_user", "candidate").get(pk=pk)
+        except Application.DoesNotExist:
+            return Response({"detail": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        is_admin = user.is_staff or user.is_superuser
+        is_recruiter = getattr(user, "profile", None) and user.profile.role == "hr"
+        is_job_owner = application.job.hr_user == user
+
+        # 1. Authenticate and authorize.
+        if not is_admin and not (is_recruiter and is_job_owner):
+            return Response(
+                {"detail": "You do not have permission to access this resume."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 2. Validate FileField and extension.
+        if not application.resume or not application.resume.name:
+            return Response({"detail": "Resume file not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        filename = application.resume.name
+        if not filename.lower().endswith(".pdf"):
+            return Response(
+                {"detail": "Unsupported file format. Only PDF files are supported."},
+                status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            )
+
+        # 3. Open file.
+        try:
+            file_handle = application.resume.open("rb")
+        except (FileNotFoundError, OSError):
+            return Response({"detail": "Resume file not found or inaccessible."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
+            return Response({"detail": "Resume storage error."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 4. Validate PDF signature and seek to zero.
+        try:
+            sig = file_handle.read(5)
+            if sig != b"%PDF-":
+                file_handle.close()
+                return Response(
+                    {"detail": "Unsupported or corrupt stored file. Not a valid PDF."},
+                    status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+                )
+            file_handle.seek(0)
+        except Exception:
+            file_handle.close()
+            return Response(
+                {"detail": "Error reading resume file."},
+                status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            )
+
+        # 5. Generate safe filename.
+        candidate_name = ""
+        if application.candidate:
+            first = (application.candidate.first_name or "").strip()
+            last = (application.candidate.last_name or "").strip()
+            if first or last:
+                candidate_name = f"{first} {last}".strip()
+            else:
+                candidate_name = application.candidate.username.strip()
+        else:
+            candidate_name = (application.candidate_name or "").strip()
+
+        if candidate_name:
+            normalized = unicodedata.normalize('NFKD', candidate_name).encode('ascii', 'ignore').decode('ascii')
+            # strip control characters (0x00-0x1f, 0x7f-0x9f), path separators, quotes, etc.
+            sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f\\/*?:"<>|]', '', normalized)
+            sanitized = sanitized.replace("'", "").replace('"', "").replace(",", "").replace(";", "")
+            sanitized = sanitized.strip()
+            sanitized = re.sub(r'\s+', '_', sanitized)
+            sanitized = re.sub(r'_+', '_', sanitized)
+            if sanitized:
+                sanitized_capped = sanitized[:100]
+                safe_filename = f"resume_{sanitized_capped}.pdf"
+            else:
+                safe_filename = f"resume_application_{application.id}.pdf"
+        else:
+            safe_filename = f"resume_application_{application.id}.pdf"
+
+        # 6. Construct FileResponse inside try/except.
+        try:
+            response = FileResponse(
+                file_handle,
+                as_attachment=True,
+                filename=safe_filename,
+                content_type="application/pdf",
+            )
+            response["X-Content-Type-Options"] = "nosniff"
+            response["Cache-Control"] = "private, no-store"
+        except Exception:
+            file_handle.close()
+            return Response(
+                {"detail": "Error constructing resume response."},
+                status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            )
+
+        # 7. Create the resume_accessed audit entry.
+        try:
+            access_role = "admin" if is_admin else "hr"
+            metadata = {
+                "application_id": application.id,
+                "job_id": application.job.id,
+                "recruiter_id": application.job.hr_user.id,
+                "access_role": access_role,
+            }
+            log_audit(
+                action="resume_accessed",
+                actor=user,
+                target_type="Application",
+                target_id=application.id,
+                target_label=f"Resume access for application {application.id}",
+                metadata=metadata,
+                request=request
+            )
+        except Exception as e:
+            response.close()
+            if not file_handle.closed:
+                file_handle.close()
+            raise e
+
+        # 8. Return response.
+        return response
+
 
 
 

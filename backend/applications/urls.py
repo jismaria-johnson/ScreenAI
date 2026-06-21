@@ -25,6 +25,7 @@ from .admin_views import (
     AdminApplicationDetailView,
     AdminApplicationInterviewsListView,
     AdminApplicationProgressionsListView,
+    AdminApplicationResumeView,
 )
 
 
@@ -48,6 +49,7 @@ urlpatterns = [
     path("admin/directory/<int:pk>/", AdminApplicationDetailView.as_view(), name="admin_application_detail_workspace"),
     path("admin/directory/<int:pk>/interviews/", AdminApplicationInterviewsListView.as_view(), name="admin_application_interviews_list"),
     path("admin/directory/<int:pk>/progressions/", AdminApplicationProgressionsListView.as_view(), name="admin_application_progressions_list"),
+    path("admin/directory/<int:pk>/resume/", AdminApplicationResumeView.as_view(), name="admin_application_resume_stream"),
     
     path("admin/candidates/", AdminCandidateDirectoryView.as_view(), name="admin_candidate_directory"),
     path("admin/candidates/<uuid:candidate_uuid>/", AdminCandidateSummaryDetailView.as_view(), name="admin_candidate_summary_detail"),

@@ -241,6 +241,12 @@ CORS_ALLOWED_ORIGINS = get_list_env(
 )
 
 
+# Safely merge Content-Disposition into CORS_EXPOSE_HEADERS preserving existing values
+CORS_EXPOSE_HEADERS = globals().get("CORS_EXPOSE_HEADERS", [])
+if "Content-Disposition" not in CORS_EXPOSE_HEADERS:
+    CORS_EXPOSE_HEADERS = list(CORS_EXPOSE_HEADERS) + ["Content-Disposition"]
+
+
 MEDIA_URL = "/media/"
 
 MEDIA_ROOT = (
