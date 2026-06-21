@@ -7,6 +7,7 @@ from rest_framework import generics, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
+from django.http import Http404
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import Profile, AuditLog, UserSecurityState
@@ -581,12 +582,20 @@ class AdminResetHRPasswordView(APIView):
             )
 
 
-from django.db.models import OuterRef, Subquery, Count, IntegerField, Q, Case, When, Value, CharField
-from django.db.models.functions import Coalesce, Concat
+from django.db.models import OuterRef, Subquery, Count, IntegerField, Q, Case, When, Value, CharField, Exists, BooleanField
+from django.db.models.functions import Coalesce, Concat, Trim, Lower
 import datetime
 from applications.models import CandidateIdentity
 from applications.pagination import StandardPageNumberPagination
-from applications.admin_serializers import AdminApplicationDirectorySerializer
+from applications.admin_serializers import (
+    AdminApplicationDirectorySerializer,
+    AdminCandidateDirectorySerializer,
+    AdminCandidateSummarySerializer,
+    AdminApplicationDetailSerializer,
+    AdminInterviewDetailSerializer,
+    AdminCandidateProgressionSerializer,
+    AdminCandidateActivitySerializer,
+)
 
 class AdminApplicationDirectoryView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
@@ -777,6 +786,696 @@ class AdminApplicationDirectoryView(generics.ListAPIView):
             queryset = queryset.order_by("-submitted_at", "-id")
 
         return queryset
+
+
+class AdminCandidateDirectoryView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminCandidateDirectorySerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Log transitional null-identity applications if any exist
+        skipped_count = Application.objects.filter(candidate_identity__isnull=True).count()
+        if skipped_count > 0:
+            logger.warning(f"Skipped {skipped_count} applications with null candidate_identity in directory query.")
+
+        params = self.request.query_params
+
+        # Explicit Parameter Validation
+        # 1. identity_type
+        identity_type = params.get("identity_type")
+        if identity_type:
+            if identity_type not in ["registered", "public", "anonymous"]:
+                raise ValidationError({"identity_type": "identity_type must be 'registered', 'public', or 'anonymous'."})
+
+        # 2. recruiter_id
+        recruiter_id_str = params.get("recruiter_id")
+        recruiter_id = None
+        if recruiter_id_str is not None:
+            if not recruiter_id_str.isdigit() or int(recruiter_id_str) <= 0:
+                raise ValidationError({"recruiter_id": "Recruiter ID must be a positive integer."})
+            recruiter_id = int(recruiter_id_str)
+
+        # 3. job_id
+        job_id_str = params.get("job_id")
+        job_id = None
+        if job_id_str is not None:
+            if not job_id_str.isdigit() or int(job_id_str) <= 0:
+                raise ValidationError({"job_id": "Job ID must be a positive integer."})
+            job_id = int(job_id_str)
+
+        # 4. status
+        status_val = params.get("status")
+        if status_val:
+            allowed_statuses = [x[0] for x in Application.STATUS_CHOICES]
+            if status_val not in allowed_statuses:
+                raise ValidationError({"status": f"Invalid status. Allowed values are: {', '.join(allowed_statuses)}"})
+
+        # 5. min_score / max_score
+        min_score_str = params.get("min_score")
+        max_score_str = params.get("max_score")
+        min_score = None
+        max_score = None
+        if min_score_str is not None:
+            try:
+                min_score = int(min_score_str)
+                if not 0 <= min_score <= 100:
+                    raise ValidationError({"min_score": "Min score must be between 0 and 100."})
+            except ValueError:
+                raise ValidationError({"min_score": "Min score must be a valid integer."})
+        if max_score_str is not None:
+            try:
+                max_score = int(max_score_str)
+                if not 0 <= max_score <= 100:
+                    raise ValidationError({"max_score": "Max score must be between 0 and 100."})
+            except ValueError:
+                raise ValidationError({"max_score": "Max score must be a valid integer."})
+        if min_score is not None and max_score is not None and min_score > max_score:
+            raise ValidationError({"min_score": "min_score cannot be greater than max_score."})
+
+        # 6. date_from / date_to
+        date_from_str = params.get("date_from")
+        date_to_str = params.get("date_to")
+
+        def parse_date_param(date_str, param_name):
+            if not date_str:
+                return None
+            try:
+                return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValidationError({param_name: f"Invalid date format for {param_name}. Use YYYY-MM-DD format."})
+
+        date_from = parse_date_param(date_from_str, "date_from")
+        date_to = parse_date_param(date_to_str, "date_to")
+        if date_from and date_to and date_from > date_to:
+            raise ValidationError({"non_field_errors": "date_from cannot be greater than date_to."})
+
+        # 7. hired_state
+        hired_state_str = params.get("hired_state")
+        hired_state_filter = None
+        if hired_state_str is not None:
+            if hired_state_str.lower() not in ["true", "false"]:
+                raise ValidationError({"hired_state": "hired_state must be either 'true' or 'false'."})
+            hired_state_filter = hired_state_str.lower() == "true"
+
+        # 8. ordering validation
+        ordering = params.get("ordering")
+        if ordering:
+            if "," in ordering or " " in ordering:
+                raise ValidationError({"ordering": "Multiple ordering fields are not supported."})
+            field_name = ordering.lstrip("-")
+            allowed_orderings = [
+                "candidate_name",
+                "latest_application_date",
+                "highest_score",
+                "total_applications",
+                "interview_count"
+            ]
+            if field_name not in allowed_orderings:
+                raise ValidationError({"ordering": f"Ordering by '{field_name}' is not supported."})
+
+        # Build active application-level filters Q object
+        remaining_filters = Q()
+        if recruiter_id:
+            remaining_filters &= Q(job__hr_user_id=recruiter_id)
+        if job_id:
+            remaining_filters &= Q(job_id=job_id)
+        if status_val:
+            remaining_filters &= Q(application_status=status_val)
+        if min_score is not None:
+            remaining_filters &= Q(ai_score__isnull=False, ai_score__gte=min_score)
+        if max_score is not None:
+            remaining_filters &= Q(ai_score__isnull=False, ai_score__lte=max_score)
+
+        if date_from:
+            dt_from = datetime.datetime.combine(date_from, datetime.time.min)
+            if timezone.is_aware(timezone.now()):
+                dt_from = timezone.make_aware(dt_from)
+            remaining_filters &= Q(submitted_at__gte=dt_from)
+
+        if date_to:
+            dt_to = datetime.datetime.combine(date_to + datetime.timedelta(days=1), datetime.time.min)
+            if timezone.is_aware(timezone.now()):
+                dt_to = timezone.make_aware(dt_to)
+            remaining_filters &= Q(submitted_at__lt=dt_to)
+
+        # Build search expressions
+        search = params.get("search")
+        user_search_q = Q()
+        app_search_q = Q()
+        if search:
+            # Registered Profile Search Branch fields
+            user_search_q = (
+                Q(candidate_identity__candidate_user__first_name__icontains=search) |
+                Q(candidate_identity__candidate_user__last_name__icontains=search) |
+                Q(candidate_identity__candidate_user__username__icontains=search) |
+                Q(candidate_identity__candidate_user__email__icontains=search)
+            )
+            # Application Field Search Branch fields
+            app_search_q = (
+                Q(job__job_title__icontains=search) |
+                Q(job__company_name__icontains=search) |
+                Q(job__hr_user__username__icontains=search) |
+                Q(candidate_name__icontains=search) |
+                Q(candidate_email__icontains=search) |
+                Q(candidate_phone__icontains=search)
+            )
+
+        # Subqueries for aggregation / latest details
+        total_applications = Coalesce(
+            Subquery(
+                Application.objects.filter(candidate_identity=OuterRef('pk'))
+                .values('candidate_identity')
+                .annotate(cnt=Count('id'))
+                .values('cnt')[:1],
+                output_field=IntegerField()
+            ),
+            0
+        )
+
+        matching_apps_qs = Application.objects.filter(candidate_identity=OuterRef('pk'))
+        if remaining_filters:
+            matching_apps_qs = matching_apps_qs.filter(remaining_filters)
+        if search:
+            # Union rule: match user search OR application search
+            matching_apps_qs = matching_apps_qs.filter(user_search_q | app_search_q)
+
+        matching_application_count = Coalesce(
+            Subquery(
+                matching_apps_qs.values('candidate_identity')
+                .annotate(cnt=Count('id'))
+                .values('cnt')[:1],
+                output_field=IntegerField()
+            ),
+            0
+        )
+
+        highest_score = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'), ai_score__isnull=False)
+            .order_by('-ai_score')
+            .values('ai_score')[:1],
+            output_field=IntegerField()
+        )
+
+        latest_score = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('ai_score')[:1],
+            output_field=IntegerField()
+        )
+
+        interview_count = Coalesce(
+            Subquery(
+                Interview.objects.filter(application__candidate_identity=OuterRef('pk'))
+                .values('application__candidate_identity')
+                .annotate(cnt=Count('id'))
+                .values('cnt')[:1],
+                output_field=IntegerField()
+            ),
+            0
+        )
+
+        hired_state_annotation = Exists(
+            Application.objects.filter(candidate_identity=OuterRef('pk'), application_status='hired')
+        )
+
+        latest_progression_stage = Subquery(
+            CandidateProgression.objects.filter(application__candidate_identity=OuterRef('pk'))
+            .order_by('-updated_at', '-id')
+            .values('stage')[:1]
+        )
+
+        latest_application_id = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('id')[:1]
+        )
+
+        latest_application_date = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('submitted_at')[:1]
+        )
+
+        latest_application_status = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('application_status')[:1]
+        )
+
+        latest_job_id = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('job_id')[:1]
+        )
+
+        latest_job_title = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('job__job_title')[:1]
+        )
+
+        latest_job_company = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('job__company_name')[:1]
+        )
+
+        latest_app_name = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_name')[:1]
+        )
+
+        latest_app_email = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_email')[:1]
+        )
+
+        latest_app_phone = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_phone')[:1]
+        )
+
+        candidate_sort_name = Case(
+            When(
+                identity_type="registered",
+                then=Case(
+                    When(
+                        candidate_user__first_name="",
+                        candidate_user__last_name="",
+                        then=F("candidate_user__username")
+                    ),
+                    When(
+                        candidate_user__first_name__isnull=True,
+                        candidate_user__last_name__isnull=True,
+                        then=F("candidate_user__username")
+                    ),
+                    default=Trim(Concat(
+                        Coalesce(F("candidate_user__first_name"), Value("")),
+                        Value(" "),
+                        Coalesce(F("candidate_user__last_name"), Value("")),
+                        output_field=CharField()
+                    ))
+                )
+            ),
+            default=Coalesce(latest_app_name, Value("")),
+            output_field=CharField()
+        )
+
+        # Base Queryset: Exclude orphan CandidateIdentity rows with no applications
+        queryset = CandidateIdentity.objects.filter(applications__isnull=False).distinct().select_related(
+            "candidate_user", "candidate_user__profile"
+        )
+
+        queryset = queryset.annotate(
+            total_applications=total_applications,
+            matching_application_count=matching_application_count,
+            highest_score=highest_score,
+            latest_score=latest_score,
+            interview_count=interview_count,
+            hired_state=hired_state_annotation,
+            latest_progression_stage=latest_progression_stage,
+            latest_application_id=latest_application_id,
+            latest_application_date=latest_application_date,
+            latest_application_status=latest_application_status,
+            latest_job_id=latest_job_id,
+            latest_job_title=latest_job_title,
+            latest_job_company=latest_job_company,
+            latest_app_name=latest_app_name,
+            latest_app_email=latest_app_email,
+            latest_app_phone=latest_app_phone,
+            candidate_sort_name=candidate_sort_name
+        ).annotate(
+            candidate_sort_name_lower=Lower("candidate_sort_name")
+        )
+
+        # Apply Candidate-Level Filters
+        if identity_type:
+            queryset = queryset.filter(identity_type=identity_type)
+
+        if hired_state_filter is not None:
+            # True: candidate has at least one hired application
+            # False: candidate has zero hired applications
+            queryset = queryset.filter(hired_state=hired_state_filter)
+
+        # Apply same-application combined filters and search qualifying
+        # Candidate qualifies only if they have at least one application matching remaining_filters (+ search if active)
+        has_app_filters = bool(
+            recruiter_id or job_id or status_val or min_score is not None or max_score is not None or date_from or date_to or search
+        )
+        if has_app_filters:
+            qualifying_apps_qs = Application.objects.filter(candidate_identity=OuterRef('pk'))
+            if remaining_filters:
+                qualifying_apps_qs = qualifying_apps_qs.filter(remaining_filters)
+            if search:
+                # Union rule: registered profile OR application matches search string
+                qualifying_apps_qs = qualifying_apps_qs.filter(user_search_q | app_search_q)
+            
+            queryset = queryset.filter(Exists(qualifying_apps_qs))
+
+        # Apply Ordering
+        if ordering:
+            field_name = ordering.lstrip("-")
+            mapping = {
+                "candidate_name": "candidate_sort_name_lower",
+                "latest_application_date": "latest_application_date",
+                "highest_score": "highest_score",
+                "total_applications": "total_applications",
+                "interview_count": "interview_count",
+            }
+            mapped_field = mapping[field_name]
+            descending = ordering.startswith("-")
+
+            # Nulls last for highest_score on both ascending and descending
+            if field_name == "highest_score":
+                if descending:
+                    queryset = queryset.order_by(F("highest_score").desc(nulls_last=True), "-id")
+                else:
+                    queryset = queryset.order_by(F("highest_score").asc(nulls_last=True), "-id")
+            else:
+                direction = "-" if descending else ""
+                queryset = queryset.order_by(f"{direction}{mapped_field}", "-id")
+        else:
+            # Default ordering: latest application date descending, then ID descending
+            queryset = queryset.order_by("-latest_application_date", "-id")
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            candidate_ids = [c.id for c in page]
+
+            # lightweight values query to fetch distinct jobs and recruiters in bulk
+            app_data = Application.objects.filter(
+                candidate_identity_id__in=candidate_ids
+            ).values(
+                'candidate_identity_id',
+                'job_id',
+                'job__job_title',
+                'job__company_name',
+                'job__hr_user_id',
+                'job__hr_user__username',
+                'job__hr_user__first_name',
+                'job__hr_user__last_name',
+                'submitted_at',
+                'id'
+            ).order_by('-submitted_at', '-id')
+
+            jobs_map = {cid: [] for cid in candidate_ids}
+            recruiters_map = {cid: [] for cid in candidate_ids}
+
+            seen_jobs = set()
+            seen_recruiters = set()
+
+            for app in app_data:
+                cid = app['candidate_identity_id']
+                jid = app['job_id']
+                rid = app['job__hr_user_id']
+
+                if jid and (cid, jid) not in seen_jobs:
+                    seen_jobs.add((cid, jid))
+                    jobs_map[cid].append({
+                        "id": jid,
+                        "title": app['job__job_title'],
+                        "company": app['job__company_name']
+                    })
+
+                if rid and (cid, rid) not in seen_recruiters:
+                    seen_recruiters.add((cid, rid))
+                    hr_first = app['job__hr_user__first_name'] or ""
+                    hr_last = app['job__hr_user__last_name'] or ""
+                    full_name = f"{hr_first} {hr_last}".strip()
+                    name = full_name if full_name else app['job__hr_user__username']
+                    recruiters_map[cid].append({
+                        "id": rid,
+                        "name": name,
+                        "username": app['job__hr_user__username']
+                    })
+
+            serializer = self.get_serializer(
+                page,
+                many=True,
+                context={
+                    "jobs_map": jobs_map,
+                    "recruiters_map": recruiters_map
+                }
+            )
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class AdminCandidateSummaryDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminCandidateSummarySerializer
+    lookup_field = "uuid"
+    lookup_url_kwarg = "candidate_uuid"
+
+    def get_queryset(self):
+        # Exclude orphan CandidateIdentity rows with no applications
+        queryset = CandidateIdentity.objects.filter(applications__isnull=False).distinct().select_related(
+            "candidate_user", "candidate_user__profile"
+        )
+        
+        total_applications = Coalesce(
+            Subquery(
+                Application.objects.filter(candidate_identity=OuterRef('pk'))
+                .values('candidate_identity')
+                .annotate(cnt=Count('id'))
+                .values('cnt')[:1],
+                output_field=IntegerField()
+            ),
+            0
+        )
+
+        highest_score = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'), ai_score__isnull=False)
+            .order_by('-ai_score')
+            .values('ai_score')[:1],
+            output_field=IntegerField()
+        )
+
+        latest_score = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('ai_score')[:1],
+            output_field=IntegerField()
+        )
+
+        interview_count = Coalesce(
+            Subquery(
+                Interview.objects.filter(application__candidate_identity=OuterRef('pk'))
+                .values('application__candidate_identity')
+                .annotate(cnt=Count('id'))
+                .values('cnt')[:1],
+                output_field=IntegerField()
+            ),
+            0
+        )
+
+        hired_state_annotation = Exists(
+            Application.objects.filter(candidate_identity=OuterRef('pk'), application_status='hired')
+        )
+
+        latest_progression_stage = Subquery(
+            CandidateProgression.objects.filter(application__candidate_identity=OuterRef('pk'))
+            .order_by('-updated_at', '-id')
+            .values('stage')[:1]
+        )
+
+        latest_application_id = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('id')[:1]
+        )
+
+        latest_application_date = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('submitted_at')[:1]
+        )
+
+        latest_app_name = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_name')[:1]
+        )
+
+        latest_app_email = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_email')[:1]
+        )
+
+        latest_app_phone = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_phone')[:1]
+        )
+
+        latest_app_education = Subquery(
+            Application.objects.filter(candidate_identity=OuterRef('pk'))
+            .order_by('-submitted_at', '-id')
+            .values('candidate_education')[:1]
+        )
+
+        queryset = queryset.annotate(
+            total_applications=total_applications,
+            latest_application_id=latest_application_id,
+            latest_application_date=latest_application_date,
+            highest_score=highest_score,
+            latest_score=latest_score,
+            interview_count=interview_count,
+            hired_state=hired_state_annotation,
+            latest_progression_stage=latest_progression_stage,
+            latest_app_name=latest_app_name,
+            latest_app_email=latest_app_email,
+            latest_app_phone=latest_app_phone,
+            latest_app_education=latest_app_education
+        )
+        
+        return queryset
+
+
+class AdminCandidateApplicationsListView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminApplicationDirectorySerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        uuid_val = self.kwargs.get("candidate_uuid")
+        if not CandidateIdentity.objects.filter(uuid=uuid_val, applications__isnull=False).exists():
+            raise Http404("Candidate not found.")
+
+        latest_interview_qs = Interview.objects.filter(
+            application=OuterRef('pk')
+        ).order_by('-scheduled_at', '-id')
+
+        latest_progression_qs = CandidateProgression.objects.filter(
+            application=OuterRef('pk')
+        ).order_by('-updated_at', '-id')
+
+        queryset = Application.objects.filter(
+            candidate_identity__uuid=uuid_val
+        ).select_related(
+            'candidate_identity',
+            'candidate',
+            'candidate__profile',
+            'job',
+            'job__hr_user'
+        ).annotate(
+            interview_count=Coalesce(
+                Subquery(
+                    Interview.objects.filter(application=OuterRef('pk'))
+                    .values('application')
+                    .annotate(cnt=Count('id'))
+                    .values('cnt')[:1],
+                    output_field=IntegerField()
+                ),
+                0
+            ),
+            latest_interview_status=Subquery(latest_interview_qs.values('status')[:1]),
+            latest_progression_stage=Subquery(latest_progression_qs.values('stage')[:1]),
+        ).order_by('-submitted_at', '-id')
+
+        return queryset
+
+
+class AdminCandidateActivityListView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminCandidateActivitySerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        candidate_uuid = self.kwargs.get("candidate_uuid")
+        if not CandidateIdentity.objects.filter(uuid=candidate_uuid).exists():
+            raise Http404("Candidate not found.")
+
+        app_ids = list(Application.objects.filter(candidate_identity__uuid=candidate_uuid).values_list('id', flat=True))
+        app_ids_str = [str(aid) for aid in app_ids]
+
+        queryset = AuditLog.objects.filter(
+            Q(target_type='Application', target_id__in=app_ids_str) |
+            Q(metadata__application_id__in=app_ids) |
+            Q(metadata__application_id__in=app_ids_str) |
+            Q(metadata__candidate_uuid=str(candidate_uuid))
+        ).select_related('actor', 'actor__profile').order_by('-created_at', '-id')
+
+        return queryset
+
+
+class AdminApplicationDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminApplicationDetailSerializer
+    queryset = Application.objects.all()
+
+    def get_queryset(self):
+        return Application.objects.select_related(
+            'candidate_identity',
+            'candidate',
+            'candidate__profile',
+            'job',
+            'job__hr_user'
+        ).annotate(
+            interviews_count_annotated=Coalesce(
+                Subquery(
+                    Interview.objects.filter(application=OuterRef('pk'))
+                    .values('application')
+                    .annotate(cnt=Count('id'))
+                    .values('cnt')[:1],
+                    output_field=IntegerField()
+                ),
+                0
+            ),
+            progressions_count_annotated=Coalesce(
+                Subquery(
+                    CandidateProgression.objects.filter(application=OuterRef('pk'))
+                    .values('application')
+                    .annotate(cnt=Count('id'))
+                    .values('cnt')[:1],
+                    output_field=IntegerField()
+                ),
+                0
+            )
+        )
+
+
+class AdminApplicationInterviewsListView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminInterviewDetailSerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        pk = self.kwargs.get("pk")
+        if not Application.objects.filter(pk=pk).exists():
+            raise Http404("Application not found.")
+
+        return Interview.objects.filter(application_id=pk).select_related('created_by').order_by('-scheduled_at', '-id')
+
+
+class AdminApplicationProgressionsListView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminCandidateProgressionSerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        pk = self.kwargs.get("pk")
+        if not Application.objects.filter(pk=pk).exists():
+            raise Http404("Application not found.")
+
+        return CandidateProgression.objects.filter(application_id=pk).select_related('updated_by').order_by('-updated_at', '-id')
+
+
 
 
 

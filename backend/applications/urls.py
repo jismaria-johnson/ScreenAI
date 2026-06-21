@@ -18,6 +18,13 @@ from .admin_views import (
     AdminInterviewsListView,
     AdminResetHRPasswordView,
     AdminApplicationDirectoryView,
+    AdminCandidateDirectoryView,
+    AdminCandidateSummaryDetailView,
+    AdminCandidateApplicationsListView,
+    AdminCandidateActivityListView,
+    AdminApplicationDetailView,
+    AdminApplicationInterviewsListView,
+    AdminApplicationProgressionsListView,
 )
 
 
@@ -38,4 +45,12 @@ urlpatterns = [
     path("admin/progression/<int:pk>/", AdminCandidateProgressionDetailView.as_view(), name="admin_candidate_progression_detail"),
     path("admin/hrs/<int:pk>/reset-password/", AdminResetHRPasswordView.as_view(), name="admin_hr_reset_password"),
     path("admin/directory/", AdminApplicationDirectoryView.as_view(), name="admin_application_directory"),
+    path("admin/directory/<int:pk>/", AdminApplicationDetailView.as_view(), name="admin_application_detail_workspace"),
+    path("admin/directory/<int:pk>/interviews/", AdminApplicationInterviewsListView.as_view(), name="admin_application_interviews_list"),
+    path("admin/directory/<int:pk>/progressions/", AdminApplicationProgressionsListView.as_view(), name="admin_application_progressions_list"),
+    
+    path("admin/candidates/", AdminCandidateDirectoryView.as_view(), name="admin_candidate_directory"),
+    path("admin/candidates/<uuid:candidate_uuid>/", AdminCandidateSummaryDetailView.as_view(), name="admin_candidate_summary_detail"),
+    path("admin/candidates/<uuid:candidate_uuid>/applications/", AdminCandidateApplicationsListView.as_view(), name="admin_candidate_applications_list"),
+    path("admin/candidates/<uuid:candidate_uuid>/activity/", AdminCandidateActivityListView.as_view(), name="admin_candidate_activity_list"),
 ]
