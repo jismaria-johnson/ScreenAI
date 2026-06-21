@@ -17,6 +17,7 @@ from .admin_views import (
     AdminSystemActivityListView,
     AdminInterviewsListView,
     AdminResetHRPasswordView,
+    AdminApplicationDirectoryView,
 )
 
 
@@ -36,4 +37,5 @@ urlpatterns = [
     path("admin/<int:pk>/progression/", AdminCandidateProgressionCreateView.as_view(), name="admin_candidate_progression_create"),
     path("admin/progression/<int:pk>/", AdminCandidateProgressionDetailView.as_view(), name="admin_candidate_progression_detail"),
     path("admin/hrs/<int:pk>/reset-password/", AdminResetHRPasswordView.as_view(), name="admin_hr_reset_password"),
+    path("admin/directory/", AdminApplicationDirectoryView.as_view(), name="admin_application_directory"),
 ]

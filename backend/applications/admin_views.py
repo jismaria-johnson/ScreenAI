@@ -581,3 +581,202 @@ class AdminResetHRPasswordView(APIView):
             )
 
 
+from django.db.models import OuterRef, Subquery, Count, IntegerField, Q, Case, When, Value, CharField
+from django.db.models.functions import Coalesce, Concat
+import datetime
+from applications.models import CandidateIdentity
+from applications.pagination import StandardPageNumberPagination
+from applications.admin_serializers import AdminApplicationDirectorySerializer
+
+class AdminApplicationDirectoryView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = AdminApplicationDirectorySerializer
+    pagination_class = StandardPageNumberPagination
+
+    def get_queryset(self):
+        latest_interview_qs = Interview.objects.filter(
+            application=OuterRef('pk')
+        ).order_by('-scheduled_at', '-id')
+
+        latest_progression_qs = CandidateProgression.objects.filter(
+            application=OuterRef('pk')
+        ).order_by('-updated_at', '-id')
+
+        queryset = Application.objects.select_related(
+            'candidate_identity',
+            'candidate',
+            'candidate__profile',
+            'job',
+            'job__hr_user'
+        ).annotate(
+            interview_count=Coalesce(
+                Subquery(
+                    Interview.objects.filter(application=OuterRef('pk'))
+                    .values('application')
+                    .annotate(cnt=Count('id'))
+                    .values('cnt')[:1],
+                    output_field=IntegerField()
+                ),
+                0
+            ),
+            latest_interview_status=Subquery(latest_interview_qs.values('status')[:1]),
+            latest_progression_stage=Subquery(latest_progression_qs.values('stage')[:1]),
+            candidate_name_annotated=Case(
+                When(
+                    candidate__isnull=False,
+                    then=Case(
+                        When(
+                            candidate__first_name__isnull=False,
+                            candidate__last_name__isnull=False,
+                            then=Concat(F("candidate__first_name"), Value(" "), F("candidate__last_name"))
+                        ),
+                        When(
+                            candidate__first_name__isnull=False,
+                            then=F("candidate__first_name")
+                        ),
+                        When(
+                            candidate__last_name__isnull=False,
+                            then=F("candidate__last_name")
+                        ),
+                        default=F("candidate__username"),
+                        output_field=CharField()
+                    )
+                ),
+                default=F("candidate_name"),
+                output_field=CharField()
+            )
+        )
+
+        params = self.request.query_params
+
+        # 1. Search
+        search = params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(candidate__first_name__icontains=search) |
+                Q(candidate__last_name__icontains=search) |
+                Q(candidate__username__icontains=search) |
+                Q(candidate__email__icontains=search) |
+                Q(candidate_name__icontains=search) |
+                Q(candidate_email__icontains=search) |
+                Q(job__job_title__icontains=search) |
+                Q(job__company_name__icontains=search) |
+                Q(job__hr_user__username__icontains=search)
+            )
+
+        # 2. recruiter_id
+        recruiter_id = params.get("recruiter_id")
+        if recruiter_id:
+            if not recruiter_id.isdigit() or int(recruiter_id) <= 0:
+                raise ValidationError({"recruiter_id": "Recruiter ID must be a positive integer."})
+            queryset = queryset.filter(job__hr_user_id=int(recruiter_id))
+
+        # 3. job_id
+        job_id = params.get("job_id")
+        if job_id:
+            if not job_id.isdigit() or int(job_id) <= 0:
+                raise ValidationError({"job_id": "Job ID must be a positive integer."})
+            queryset = queryset.filter(job_id=int(job_id))
+
+        # 4. status
+        status_val = params.get("status")
+        if status_val:
+            allowed_statuses = [x[0] for x in Application.STATUS_CHOICES]
+            if status_val not in allowed_statuses:
+                raise ValidationError({"status": f"Invalid status. Allowed values are: {', '.join(allowed_statuses)}"})
+            queryset = queryset.filter(application_status=status_val)
+
+        # 5. min_score / max_score
+        min_score = params.get("min_score")
+        max_score = params.get("max_score")
+        
+        parsed_min = None
+        parsed_max = None
+
+        if min_score:
+            try:
+                parsed_min = int(min_score)
+                if not 0 <= parsed_min <= 100:
+                    raise ValidationError({"min_score": "Min score must be between 0 and 100."})
+            except ValueError:
+                raise ValidationError({"min_score": "Min score must be a valid integer."})
+
+        if max_score:
+            try:
+                parsed_max = int(max_score)
+                if not 0 <= parsed_max <= 100:
+                    raise ValidationError({"max_score": "Max score must be between 0 and 100."})
+            except ValueError:
+                raise ValidationError({"max_score": "Max score must be a valid integer."})
+
+        if parsed_min is not None and parsed_max is not None and parsed_min > parsed_max:
+            raise ValidationError({"min_score": "min_score cannot be greater than max_score."})
+
+        if parsed_min is not None:
+            queryset = queryset.filter(ai_score__isnull=False, ai_score__gte=parsed_min)
+        if parsed_max is not None:
+            queryset = queryset.filter(ai_score__isnull=False, ai_score__lte=parsed_max)
+
+        # 6. is_registered
+        is_registered = params.get("is_registered")
+        if is_registered is not None:
+            if is_registered.lower() not in ["true", "false"]:
+                raise ValidationError({"is_registered": "is_registered must be either 'true' or 'false'."})
+            val = is_registered.lower() == "true"
+            queryset = queryset.filter(candidate__isnull=not val)
+
+        # 7. Date range validation and parsing
+        date_from_str = params.get("date_from")
+        date_to_str = params.get("date_to")
+
+        def parse_date_param(date_str, param_name):
+            if not date_str:
+                return None
+            try:
+                return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValidationError({param_name: f"Invalid date format for {param_name}. Use YYYY-MM-DD format."})
+
+        date_from = parse_date_param(date_from_str, "date_from")
+        date_to = parse_date_param(date_to_str, "date_to")
+
+        if date_from and date_to and date_from > date_to:
+            raise ValidationError({"non_field_errors": "date_from cannot be greater than date_to."})
+
+        if date_from:
+            dt_from = datetime.datetime.combine(date_from, datetime.time.min)
+            if timezone.is_aware(timezone.now()):
+                dt_from = timezone.make_aware(dt_from)
+            queryset = queryset.filter(submitted_at__gte=dt_from)
+
+        if date_to:
+            dt_to = datetime.datetime.combine(date_to + datetime.timedelta(days=1), datetime.time.min)
+            if timezone.is_aware(timezone.now()):
+                dt_to = timezone.make_aware(dt_to)
+            queryset = queryset.filter(submitted_at__lt=dt_to)
+
+        # Ordering
+        ordering = params.get("ordering")
+        if ordering:
+            field_name = ordering.lstrip("-")
+            allowed_fields = ["submitted_at", "ai_score", "candidate_name", "job_title", "status"]
+            if field_name not in allowed_fields:
+                raise ValidationError({"ordering": f"Ordering by '{field_name}' is not supported."})
+            
+            mapping = {
+                "submitted_at": "submitted_at",
+                "ai_score": "ai_score",
+                "candidate_name": "candidate_name_annotated",
+                "job_title": "job__job_title",
+                "status": "application_status",
+            }
+            mapped_field = mapping[field_name]
+            direction = "-" if ordering.startswith("-") else ""
+            queryset = queryset.order_by(f"{direction}{mapped_field}", "-id")
+        else:
+            queryset = queryset.order_by("-submitted_at", "-id")
+
+        return queryset
+
+
+

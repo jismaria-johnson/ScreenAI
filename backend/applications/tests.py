@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from applications.models import Application
+from applications.models import Application, CandidateIdentity, CandidateProgression, Interview
 from jobs.models import Job
 from ai_engine.gemini_scorer import score_resume_with_gemini, parse_and_clamp_score
 
@@ -1744,3 +1744,366 @@ class Phase2Stage1To3TestCase(TestCase):
         ident_anon = get_or_create_candidate_identity(app_anon)
         self.assertEqual(ident_anon.identity_type, "anonymous")
         self.assertIsNone(ident_anon.public_email_key)
+
+
+class AdminApplicationDirectoryTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+        # Admin User
+        self.admin_user = User.objects.create_superuser(username="admin_p2", password="password", email="admin@test.com")
+        self.admin_profile = Profile.objects.create(user=self.admin_user, role="admin")
+
+        # Recruiter Users
+        self.hr_user = User.objects.create_user(username="hr_p2", password="password", email="hr@test.com")
+        self.hr_profile = Profile.objects.create(user=self.hr_user, role="hr")
+        
+        self.other_hr = User.objects.create_user(username="other_hr_p2", password="password", email="other_hr@test.com")
+        self.other_hr_profile = Profile.objects.create(user=self.other_hr, role="hr")
+
+        # Candidate User
+        self.candidate_user = User.objects.create_user(username="cand_p2", password="password", email="cand@test.com")
+        self.candidate_profile = Profile.objects.create(user=self.candidate_user, role="candidate")
+
+        # Jobs (one active, one archived status-wise, though is_archived field is phase 2 stage 8, let's just make jobs)
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Software Architect",
+            company_name="CorpCorp",
+            job_description="Architect description",
+            required_skills="Python",
+            required_experience="5 years",
+            status="open"
+        )
+        self.job_closed = Job.objects.create(
+            hr_user=self.other_hr,
+            job_title="Frontend Developer",
+            company_name="WebCorp",
+            job_description="Frontend dev description",
+            required_skills="React",
+            required_experience="2 years",
+            status="closed"
+        )
+
+        self.resume_file = SimpleUploadedFile(
+            "resume.pdf",
+            b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+            content_type="application/pdf"
+        )
+
+        # Create Identities & Applications
+        from applications.services import get_or_create_candidate_identity
+        
+        # 1. Registered candidate app
+        self.app_reg = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_user,
+            ai_score=85,
+            recommendation="shortlist",
+            application_status="shortlisted"
+        )
+        self.app_reg.candidate_identity = get_or_create_candidate_identity(self.app_reg)
+        self.app_reg.save()
+
+        # 2. Public candidate app with email
+        self.app_pub = Application.objects.create(
+            job=self.job,
+            candidate_name="Public candidate",
+            candidate_email="public_cand@test.com",
+            candidate_phone="+9999",
+            candidate_education="B.S. CS",
+            ai_score=60,
+            recommendation="review",
+            application_status="pending"
+        )
+        self.app_pub.candidate_identity = get_or_create_candidate_identity(self.app_pub)
+        self.app_pub.save()
+
+        # 3. Anonymous candidate app (no email/phone)
+        self.app_anon = Application.objects.create(
+            job=self.job_closed,
+            candidate_name="Anonymous candidate",
+            candidate_email="",
+            ai_score=95,
+            recommendation="shortlist",
+            application_status="hired"
+        )
+        self.app_anon.candidate_identity = get_or_create_candidate_identity(self.app_anon)
+        self.app_anon.save()
+
+        # Add some Interviews
+        self.interview1 = Interview.objects.create(
+            application=self.app_reg,
+            round_name="Tech 1",
+            round_number=1,
+            status="completed",
+            scheduled_at=timezone.now() - timezone.timedelta(days=2),
+            created_by=self.hr_user
+        )
+        self.interview2 = Interview.objects.create(
+            application=self.app_reg,
+            round_name="Tech 2",
+            round_number=2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            created_by=self.hr_user
+        )
+
+        # Add some Progressions
+        self.progression1 = CandidateProgression.objects.create(
+            application=self.app_anon,
+            stage="Hired",
+            notes="Hired Stage",
+            updated_by=self.admin_user,
+            updater_role="admin"
+        )
+        self.progression2 = CandidateProgression.objects.create(
+            application=self.app_anon,
+            stage="Onboarding",
+            notes="Onboarding Stage",
+            updated_by=self.admin_user,
+            updater_role="admin"
+        )
+
+    def test_permissions(self):
+        url = "/api/applications/admin/directory/"
+        
+        # 1. Anonymous user denied (401 or 403)
+        self.client.force_authenticate(user=None)
+        response = self.client.get(url)
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+        # 2. Candidate user denied (403)
+        self.client.force_authenticate(user=self.candidate_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Active recruiter user denied (403)
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 4. Suspended recruiter (user.is_active = False) denied (403 or 401)
+        self.hr_user.is_active = False
+        self.hr_user.save()
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(url)
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.hr_user.is_active = True
+        self.hr_user.save()
+
+        # 5. Superuser allowed (200)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_response_shape_and_sensitive_exclusion(self):
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/applications/admin/directory/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        results = response.data["results"]
+        self.assertEqual(len(results), 3)
+
+        # Validate that sensitive identity fields are NOT exposed
+        for item in results:
+            self.assertNotIn("public_email_key", item)
+            self.assertNotIn("normalized_email", item)
+            # Ensure candidate_uuid is a valid UUID string
+            self.assertIsNotNone(item["candidate_uuid"])
+            # Ensure resume_url is not present until streaming endpoints are added
+            self.assertNotIn("resume_url", item)
+
+        # Verify specific fields in registered candidate app serialization
+        app_reg_data = next(x for x in results if x["id"] == self.app_reg.id)
+        self.assertEqual(app_reg_data["identity_type"], "registered")
+        self.assertEqual(app_reg_data["candidate_contact"]["email"], self.candidate_user.email)
+        self.assertEqual(app_reg_data["job"]["title"], self.job.job_title)
+        self.assertEqual(app_reg_data["recruiter"]["username"], self.hr_user.username)
+        self.assertEqual(app_reg_data["interview_count"], 2)
+        # Latest interview status by scheduled_at desc, id desc (Tech 2 is scheduled)
+        self.assertEqual(app_reg_data["latest_interview_status"], "scheduled")
+
+        # Verify specific fields in public candidate app serialization
+        app_pub_data = next(x for x in results if x["id"] == self.app_pub.id)
+        self.assertEqual(app_pub_data["identity_type"], "public")
+        self.assertEqual(app_pub_data["candidate_contact"]["name"], "Public candidate")
+        self.assertEqual(app_pub_data["candidate_contact"]["phone"], "+9999")
+        self.assertEqual(app_pub_data["interview_count"], 0)
+        self.assertIsNone(app_pub_data["latest_interview_status"])
+
+        # Verify specific fields in anonymous candidate app serialization
+        app_anon_data = next(x for x in results if x["id"] == self.app_anon.id)
+        self.assertEqual(app_anon_data["identity_type"], "anonymous")
+        self.assertEqual(app_anon_data["latest_progression_stage"], "Onboarding")
+
+    def test_transitional_null_identity_safety(self):
+        # Temporarily nullify the identity relation
+        self.app_reg.candidate_identity = None
+        self.app_reg.save()
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/applications/admin/directory/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        results = response.data["results"]
+        app_reg_data = next(x for x in results if x["id"] == self.app_reg.id)
+        self.assertIsNone(app_reg_data["candidate_uuid"])
+        self.assertEqual(app_reg_data["identity_type"], "registered")
+
+        # Restore identity
+        from applications.services import get_or_create_candidate_identity
+        self.app_reg.candidate_identity = get_or_create_candidate_identity(self.app_reg)
+        self.app_reg.save()
+
+    def test_individual_filters(self):
+        self.client.force_authenticate(user=self.admin_user)
+        
+        # 1. search
+        res = self.client.get("/api/applications/admin/directory/", {"search": "Architect"})
+        self.assertEqual(res.data["count"], 2) # app_reg & app_pub both belong to Software Architect job
+
+        res = self.client.get("/api/applications/admin/directory/", {"search": "public_cand@test.com"})
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["id"], self.app_pub.id)
+
+        # 2. recruiter_id
+        res = self.client.get("/api/applications/admin/directory/", {"recruiter_id": self.hr_user.id})
+        self.assertEqual(res.data["count"], 2)
+
+        # 3. job_id
+        res = self.client.get("/api/applications/admin/directory/", {"job_id": self.job_closed.id})
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["id"], self.app_anon.id)
+
+        # 4. status
+        res = self.client.get("/api/applications/admin/directory/", {"status": "hired"})
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["id"], self.app_anon.id)
+
+        # 5. min_score / max_score
+        res = self.client.get("/api/applications/admin/directory/", {"min_score": 80})
+        self.assertEqual(res.data["count"], 2) # app_reg (85) and app_anon (95)
+
+        res = self.client.get("/api/applications/admin/directory/", {"max_score": 70})
+        self.assertEqual(res.data["count"], 1) # app_pub (60)
+
+        # 6. is_registered
+        res = self.client.get("/api/applications/admin/directory/", {"is_registered": "true"})
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["id"], self.app_reg.id)
+
+        res = self.client.get("/api/applications/admin/directory/", {"is_registered": "false"})
+        self.assertEqual(res.data["count"], 2)
+
+        # 7. date_from / date_to boundaries (inclusive)
+        today = timezone.now().date().isoformat()
+        res = self.client.get("/api/applications/admin/directory/", {"date_from": today, "date_to": today})
+        self.assertEqual(res.data["count"], 3)
+
+    def test_combined_filters(self):
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            "status": "shortlisted",
+            "min_score": 80,
+            "is_registered": "true"
+        }
+        res = self.client.get("/api/applications/admin/directory/", payload)
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["id"], self.app_reg.id)
+
+    def test_invalid_filters_bad_request(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        # 1. Invalid recruiter_id
+        res = self.client.get("/api/applications/admin/directory/", {"recruiter_id": "abc"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. Invalid status
+        res = self.client.get("/api/applications/admin/directory/", {"status": "unknown"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3. Invalid score
+        res = self.client.get("/api/applications/admin/directory/", {"min_score": "abc"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        res = self.client.get("/api/applications/admin/directory/", {"min_score": 110})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        res = self.client.get("/api/applications/admin/directory/", {"min_score": 80, "max_score": 60})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 4. Invalid is_registered
+        res = self.client.get("/api/applications/admin/directory/", {"is_registered": "yes"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 5. Invalid date
+        res = self.client.get("/api/applications/admin/directory/", {"date_from": "2026/06/01"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+        res = self.client.get("/api/applications/admin/directory/", {"date_from": "2026-06-10", "date_to": "2026-06-01"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_ordering_and_tie_breaker(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        # Allow only: submitted_at, ai_score, candidate_name, job_title, status
+        # Test ai_score ascending
+        res = self.client.get("/api/applications/admin/directory/", {"ordering": "ai_score"})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        scores = [x["ai_score"] for x in res.data["results"]]
+        self.assertEqual(scores, [60, 85, 95])
+
+        # Test ai_score descending
+        res = self.client.get("/api/applications/admin/directory/", {"ordering": "-ai_score"})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        scores = [x["ai_score"] for x in res.data["results"]]
+        self.assertEqual(scores, [95, 85, 60])
+
+        # Test invalid ordering parameter
+        res = self.client.get("/api/applications/admin/directory/", {"ordering": "invalid_field"})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pagination_limits(self):
+        self.client.force_authenticate(user=self.admin_user)
+        
+        # Test custom page size
+        res = self.client.get("/api/applications/admin/directory/", {"page_size": 2})
+        self.assertEqual(len(res.data["results"]), 2)
+        self.assertIsNotNone(res.data["next"])
+
+        # Test maximum page size enforcement (max 100)
+        res = self.client.get("/api/applications/admin/directory/", {"page_size": 150})
+        # Even though we requested 150, the pagination max limit should restrict the page size
+        # We only have 3 items in total, let's verify standard metadata fields are in response
+        self.assertEqual(res.data["count"], 3)
+        self.assertIsNone(res.data["next"])
+
+    def test_stable_query_count_and_n_plus_one_protection(self):
+        self.client.force_authenticate(user=self.admin_user)
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+
+        # Capture queries with page_size=1
+        with CaptureQueriesContext(connection) as ctx1:
+            self.client.get("/api/applications/admin/directory/", {"page_size": 1})
+        count1 = len(ctx1.captured_queries)
+
+        # Capture queries with page_size=3
+        with CaptureQueriesContext(connection) as ctx2:
+            self.client.get("/api/applications/admin/directory/", {"page_size": 3})
+        count2 = len(ctx2.captured_queries)
+
+        # Both query counts must be identical, verifying N+1 query protection
+        self.assertEqual(count1, count2, f"SQL Query counts differ: {count1} vs {count2}")
+
+    def test_existing_endpoints_compatibility(self):
+        # 1. Authenticate as HR to recruiter application endpoint
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get("/api/applications/hr/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # 2. Authenticate as Admin to recruiter summary endpoint
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get("/api/applications/admin/hrs/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
