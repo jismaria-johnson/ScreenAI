@@ -366,11 +366,73 @@ class ApplicationEvaluationFlowTestCase(APITestCase):
         self.assertEqual(new_app_data["skills_score"], 24)
         self.assertEqual(new_app_data["project_summary"], "Project summary text")
         self.assertEqual(new_app_data["education_summary"], "Education summary text")
+        self.assertEqual(new_app_data["relevance_score"], 8)
+        self.assertEqual(new_app_data["relevance_score_reason"], "Aligned")
+        self.assertEqual(new_app_data["education_score"], 5)
+        self.assertEqual(new_app_data["education_score_reason"], "Degree")
+        self.assertEqual(new_app_data["skills_reason"], "Good skills")
+        self.assertEqual(new_app_data["experience_score_reason"], "Good experience")
+        self.assertEqual(new_app_data["projects_score_reason"], "Nice projects")
+        self.assertEqual(new_app_data["company_role_score_reason"], "Fit")
 
         # Check old application serialization details
         old_app_data = next(app for app in response.data if app["id"] == old_app.id)
         self.assertIsNone(old_app_data["skills_score"])
         self.assertIsNone(old_app_data["project_summary"])
+        self.assertIsNone(old_app_data["relevance_score"])
+        self.assertIsNone(old_app_data["relevance_score_reason"])
+        self.assertIsNone(old_app_data["education_score"])
+        self.assertIsNone(old_app_data["education_score_reason"])
+        self.assertIsNone(old_app_data["skills_reason"])
+        self.assertIsNone(old_app_data["experience_score_reason"])
+        self.assertIsNone(old_app_data["projects_score_reason"])
+        self.assertIsNone(old_app_data["company_role_score_reason"])
+
+    def test_serializer_score_visibility_restrictions(self):
+        # Create an application with score details
+        app = Application.objects.create(
+            job=self.job,
+            candidate_name="Private Candidate",
+            candidate_email="private@test.com",
+            resume=self.resume_file,
+            ai_score=85,
+            skills_score=25,
+            experience_score=20,
+            projects_score=15,
+            company_role_score=10,
+            education_score=5,
+            relevance_score=10,
+            skills_reason="skills reason",
+            experience_score_reason="exp reason",
+            projects_score_reason="proj reason",
+            company_role_score_reason="role reason",
+            education_score_reason="edu reason",
+            relevance_score_reason="relevance reason",
+            recommendation="shortlist"
+        )
+        
+        # Test candidate application serializer
+        from applications.serializers import CandidateApplicationSerializer, PublicApplicationCreateSerializer
+        candidate_serializer = CandidateApplicationSerializer(app)
+        for field in [
+            "ai_score", "skills_score", "experience_score", "projects_score", 
+            "company_role_score", "education_score", "relevance_score",
+            "skills_reason", "experience_score_reason", "projects_score_reason",
+            "company_role_score_reason", "education_score_reason", "relevance_score_reason",
+            "recommendation", "ai_feedback"
+        ]:
+            self.assertNotIn(field, candidate_serializer.data)
+            
+        # Test public application serializer
+        public_serializer = PublicApplicationCreateSerializer(app)
+        for field in [
+            "ai_score", "skills_score", "experience_score", "projects_score", 
+            "company_role_score", "education_score", "relevance_score",
+            "skills_reason", "experience_score_reason", "projects_score_reason",
+            "company_role_score_reason", "education_score_reason", "relevance_score_reason",
+            "recommendation", "ai_feedback"
+        ]:
+            self.assertNotIn(field, public_serializer.data)
 
     def test_hr_filters_still_work(self):
         # Create different applications
@@ -562,8 +624,8 @@ class AdminPanelTestCase(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should have at least the job creation activity and application progression activity
-        self.assertTrue(len(response.data) > 0)
-        self.assertEqual(response.data[0]["type"], "progression_updated")
+        self.assertTrue(len(response.data["results"]) > 0)
+        self.assertEqual(response.data["results"][0]["action"], "candidate_progression_created")
 
     def test_admin_progression_override(self):
         # Create a progression log
@@ -1512,31 +1574,45 @@ class InterviewWorkflowTestCase(InterviewTestCaseBase):
 
 class InterviewAuditTestCase(InterviewTestCaseBase):
     def test_audit_logs_construction(self):
+        # 1. Schedule an interview using the HR API endpoint
+        self.client.force_authenticate(user=self.hr_user)
+        payload = {
+            "round_name": "Round Audit",
+            "round_number": 1,
+            "interview_type": "video",
+            "scheduled_at": timezone.now() + timezone.timedelta(days=1),
+            "location_or_meeting_link": "http://zoom.us/link"
+        }
+        res = self.client.post(self.url, payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        interview_id = res.data["id"]
+        
+        # Authenticate as admin to query the activity log
         self.client.force_authenticate(user=self.admin_user)
-        
         response = self.client.get("/api/applications/admin/activity-log/")
-        initial_count = len([x for x in response.data if "interview_" in x["id"]])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        interview = Interview.objects.create(
-            application=self.app,
-            round_name="Round Audit",
-            round_number=1,
-            status="scheduled",
-            created_by=self.hr_user
-        )
-        
-        response = self.client.get("/api/applications/admin/activity-log/")
-        scheduled_logs = [x for x in response.data if x["type"] == "interview_scheduled"]
+        results = response.data["results"]
+        scheduled_logs = [x for x in results if x["action"] == "interview_scheduled"]
         self.assertTrue(len(scheduled_logs) > 0)
-        self.assertIn("scheduled for candidate", scheduled_logs[0]["message"])
+        self.assertEqual(scheduled_logs[0]["target_id"], str(interview_id))
         
-        interview.created_at = timezone.now() - timezone.timedelta(seconds=10)
-        interview.save()
+        # 2. Reschedule the interview using the HR API endpoint
+        self.client.force_authenticate(user=self.hr_user)
+        reschedule_url = f"/api/applications/interviews/{interview_id}/"
+        new_time = timezone.now() + timezone.timedelta(days=2)
+        res = self.client.patch(reschedule_url, {"scheduled_at": new_time}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
         
+        # Authenticate as admin to query the activity log
+        self.client.force_authenticate(user=self.admin_user)
         response = self.client.get("/api/applications/admin/activity-log/")
-        rescheduled_logs = [x for x in response.data if x["type"] == "interview_rescheduled"]
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        results = response.data["results"]
+        rescheduled_logs = [x for x in results if x["action"] == "interview_rescheduled"]
         self.assertTrue(len(rescheduled_logs) > 0)
-        self.assertIn("rescheduled for candidate", rescheduled_logs[0]["message"])
+        self.assertEqual(rescheduled_logs[0]["target_id"], str(interview_id))
 
 
 

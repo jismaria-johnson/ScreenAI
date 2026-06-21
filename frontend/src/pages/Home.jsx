@@ -24,9 +24,8 @@ function Home() {
       <div className="row g-4 mt-4">
         {/* For Recruiters */}
         <div className="col-md-6 col-lg-3">
-          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-            <div className="fs-1 mb-3" style={{ color: "var(--screenai-primary)" }}>💼</div>
-            <h5 className="fw-bold text-white">For Recruiters</h5>
+          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)", borderTop: "4px solid var(--screenai-primary)" }}>
+            <h5 className="fw-bold text-white mt-2">For Recruiters</h5>
             <p className="small mb-0 mt-2" style={{ color: "var(--screenai-text-secondary)" }}>
               Log in to manage jobs and candidates. Recruiter accounts are provisioned exclusively by system administrators.
             </p>
@@ -35,9 +34,8 @@ function Home() {
 
         {/* For Candidates */}
         <div className="col-md-6 col-lg-3">
-          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-            <div className="fs-1 mb-3" style={{ color: "var(--screenai-success)" }}>📄</div>
-            <h5 className="fw-bold text-white">For Candidates</h5>
+          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)", borderTop: "4px solid var(--screenai-success)" }}>
+            <h5 className="fw-bold text-white mt-2">For Candidates</h5>
             <p className="small mb-0 mt-2" style={{ color: "var(--screenai-text-secondary)" }}>
               Apply to jobs without registering or creating an account. Simply use the public application link provided by recruiters to upload your resume.
             </p>
@@ -46,9 +44,8 @@ function Home() {
 
         {/* For Administrators */}
         <div className="col-md-6 col-lg-3">
-          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-            <div className="fs-1 mb-3" style={{ color: "var(--screenai-warning)" }}>🛠️</div>
-            <h5 className="fw-bold text-white">For Administrators</h5>
+          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)", borderTop: "4px solid var(--screenai-warning)" }}>
+            <h5 className="fw-bold text-white mt-2">For Administrators</h5>
             <p className="small mb-0 mt-2" style={{ color: "var(--screenai-text-secondary)" }}>
               Manage recruiter accounts, track job postings, monitor candidate hiring status, and coordinate candidate progression updates.
             </p>
@@ -57,9 +54,8 @@ function Home() {
 
         {/* AI-Powered Screening */}
         <div className="col-md-6 col-lg-3">
-          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)" }}>
-            <div className="fs-1 mb-3" style={{ color: "var(--screenai-info)" }}>⚡</div>
-            <h5 className="fw-bold text-white">AI-Powered Screening</h5>
+          <div className="card h-100 p-4 rounded-3 text-center transition-all" style={{ backgroundColor: "var(--screenai-surface)", border: "1px solid var(--screenai-border)", borderTop: "4px solid var(--screenai-info)" }}>
+            <h5 className="fw-bold text-white mt-2">AI-Powered Screening</h5>
             <p className="small mb-0 mt-2" style={{ color: "var(--screenai-text-secondary)" }}>
               Leverage Gemini AI to automatically parse uploaded PDF resumes, calculate compatibility scores, and extract skills and work history.
             </p>

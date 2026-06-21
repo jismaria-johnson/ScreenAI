@@ -52,6 +52,7 @@ class ApplyJobView(
         FormParser,
     ]
 
+    @transaction.atomic
     def perform_create(
         self,
         serializer,
@@ -92,6 +93,24 @@ class ApplyJobView(
         )
 
         application.evaluate_and_save()
+
+        from accounts.utils import log_audit
+        log_audit(
+            action="application_submitted",
+            actor=self.request.user,
+            target_type="Application",
+            target_id=application.id,
+            target_label=f"{self.request.user.username} - {job.job_title}",
+            metadata={
+                "recruiter_id": job.hr_user.id,
+                "recruiter_username": job.hr_user.username,
+                "job_id": job.id,
+                "job_title": job.job_title,
+                "application_id": application.id,
+                "candidate_name": self.request.user.username,
+            },
+            request=self.request
+        )
 
 
 class MyApplicationsView(
@@ -378,6 +397,7 @@ class UpdateApplicationStatusView(
                 "Invalid application status."
             )
 
+        old_status = application.application_status
         application.application_status = (
             new_status
         )
@@ -386,6 +406,25 @@ class UpdateApplicationStatusView(
             update_fields=[
                 "application_status",
             ]
+        )
+
+        from accounts.utils import log_audit
+        log_audit(
+            action="application_status_changed",
+            actor=request.user,
+            target_type="Application",
+            target_id=application.id,
+            target_label=f"{application.candidate_name or (application.candidate.username if application.candidate else '')} - {application.job.job_title}",
+            metadata={
+                "recruiter_id": application.job.hr_user.id,
+                "recruiter_username": application.job.hr_user.username,
+                "job_id": application.job.id,
+                "job_title": application.job.job_title,
+                "application_id": application.id,
+                "previous_status": old_status,
+                "new_status": new_status,
+            },
+            request=request
         )
 
         serializer = (
@@ -434,6 +473,7 @@ class PublicApplicationCreateView(
                 "Invalid application link."
             )
 
+    @transaction.atomic
     def perform_create(
         self,
         serializer,
@@ -511,6 +551,24 @@ class PublicApplicationCreateView(
 
         application.evaluate_and_save()
 
+        from accounts.utils import log_audit
+        log_audit(
+            action="application_submitted",
+            actor=None,
+            target_type="Application",
+            target_id=application.id,
+            target_label=f"{application.candidate_name} - {job.job_title}",
+            metadata={
+                "recruiter_id": job.hr_user.id,
+                "recruiter_username": job.hr_user.username,
+                "job_id": job.id,
+                "job_title": job.job_title,
+                "application_id": application.id,
+                "candidate_name": application.candidate_name,
+            },
+            request=self.request
+        )
+
 
 class ApplicationInterviewsView(generics.ListCreateAPIView):
     permission_classes = [IsAdminOrHiringHRForInterview]
@@ -530,16 +588,94 @@ class ApplicationInterviewsView(generics.ListCreateAPIView):
         app = self.get_application()
         return app.interviews.select_related("created_by").order_by("round_number", "scheduled_at")
 
+    @transaction.atomic
     def perform_create(self, serializer):
         app = self.get_application()
-        serializer.save(
+        interview = serializer.save(
             application=app,
             created_by=self.request.user,
             status="scheduled"
+        )
+
+        from accounts.utils import log_audit
+        log_audit(
+            action="interview_scheduled",
+            actor=self.request.user,
+            target_type="Interview",
+            target_id=interview.id,
+            target_label=str(interview),
+            metadata={
+                "recruiter_id": app.job.hr_user.id,
+                "recruiter_username": app.job.hr_user.username,
+                "job_id": app.job.id,
+                "job_title": app.job.job_title,
+                "application_id": app.id,
+                "interview_id": interview.id,
+                "round_name": interview.round_name,
+                "round_number": interview.round_number,
+                "scheduled_at": str(interview.scheduled_at) if interview.scheduled_at else None,
+            },
+            request=self.request
         )
 
 
 class InterviewDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminOrHiringHRForInterview]
     serializer_class = InterviewSerializer
-    queryset = Interview.objects.select_related("application", "application__job", "created_by").all()
+    queryset = Interview.objects.select_related("application", "application__job", "created_by").all()
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        old_status = instance.status
+        old_scheduled_at = instance.scheduled_at
+        old_location = instance.location_or_meeting_link
+        old_interviewer = instance.interviewer_name
+
+        interview = serializer.save()
+
+        # Check what changed
+        from accounts.utils import log_audit
+        app = interview.application
+        metadata = {
+            "recruiter_id": app.job.hr_user.id,
+            "recruiter_username": app.job.hr_user.username,
+            "job_id": app.job.id,
+            "job_title": app.job.job_title,
+            "application_id": app.id,
+            "interview_id": interview.id,
+            "round_name": interview.round_name,
+            "round_number": interview.round_number,
+            "previous_status": old_status,
+            "new_status": interview.status,
+        }
+
+        if old_status != interview.status:
+            action_map = {
+                "completed": "interview_completed",
+                "cancelled": "interview_cancelled",
+                "no_show": "interview_no_show",
+                "scheduled": "interview_scheduled",
+            }
+            action = action_map.get(interview.status, "interview_updated")
+            log_audit(
+                action=action,
+                actor=self.request.user,
+                target_type="Interview",
+                target_id=interview.id,
+                target_label=str(interview),
+                metadata=metadata,
+                request=self.request
+            )
+        elif (old_scheduled_at != interview.scheduled_at or 
+              old_location != interview.location_or_meeting_link or 
+              old_interviewer != interview.interviewer_name):
+            log_audit(
+                action="interview_rescheduled",
+                actor=self.request.user,
+                target_type="Interview",
+                target_id=interview.id,
+                target_label=str(interview),
+                metadata=metadata,
+                request=self.request
+            )

@@ -7,6 +7,7 @@ import {
 
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
@@ -14,10 +15,11 @@ import Login from "./pages/Login";
 import PublicApplyJob from "./pages/PublicApplyJob";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/AdminDashboard";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 
 function App() {
   const location = useLocation();
-  const showNavbar = !location.pathname.startsWith("/hr-dashboard") && !location.pathname.startsWith("/admin-dashboard");
+  const showNavbar = !location.pathname.startsWith("/hr-dashboard") && !location.pathname.startsWith("/admin-dashboard") && location.pathname !== "/force-password-change";
 
   return (
     <div className="screenai-app">
@@ -45,12 +47,27 @@ function App() {
         />
 
         <Route
+          path="/force-password-change"
+          element={
+            <ProtectedRoute
+              allowedRoles={["hr", "admin"]}
+            >
+              <ErrorBoundary>
+                <ForcePasswordChange />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/hr-dashboard"
           element={
             <ProtectedRoute
               allowedRoles={["hr"]}
             >
-              <HRDashboard />
+              <ErrorBoundary>
+                <HRDashboard />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -61,7 +78,9 @@ function App() {
             <ProtectedRoute
               allowedRoles={["admin"]}
             >
-              <AdminDashboard />
+              <ErrorBoundary>
+                <AdminDashboard />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -83,7 +102,7 @@ function App() {
 
         <Route
           path="/hr-applications"
-          element={<Navigate to="/hr-dashboard?tab=applications" replace />}
+          element={<Navigate to="/hr-dashboard?tab=candidates" replace />}
         />
 
         <Route

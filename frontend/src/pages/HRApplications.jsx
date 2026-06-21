@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import API from "../api/axiosConfig";
+import API, { MEDIA_BASE_URL } from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -373,7 +373,9 @@ function HRApplications() {
       return resumePath;
     }
 
-    return `http://127.0.0.1:8000${resumePath}`;
+    const base = MEDIA_BASE_URL.endsWith("/") ? MEDIA_BASE_URL.slice(0, -1) : MEDIA_BASE_URL;
+    const normalizedPath = resumePath.startsWith("/") ? resumePath : `/${resumePath}`;
+    return `${base}${normalizedPath}`;
   };
 
   const getCandidateName = (application) => {
@@ -1122,7 +1124,7 @@ function HRApplications() {
 
             {selectedApplication.application_status === "hired" ? (
               <div className="w-100 alert alert-success border-0 py-2 px-3 mt-2 mb-0 small fw-bold">
-                🎉 Recruitment completed. Continue updates through the progression timeline.
+                Recruitment completed. Continue updates through the progression timeline.
               </div>
             ) : (
               <>
@@ -1136,7 +1138,7 @@ function HRApplications() {
                     )
                   }
                 >
-                  🎉 Hire Candidate
+                  Hire Candidate
                 </button>
 
                 {selectedApplication.application_status !== "shortlisted" && (

@@ -3,31 +3,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* Theme Colors */
   --screenai-bg: #0f172a;
   --screenai-surface: #1e293b;
   --screenai-surface-elevated: #334155;
   --screenai-border: #475569;
-  
-  /* Text Colors */
+
+  --screenai-text: #f8fafc;
+  --screenai-text-secondary: #cbd5e1;
+  --screenai-text-muted: #94a3b8;
+
+  --screenai-primary: #6366f1;
+  --screenai-success: #10b981;
+  --screenai-danger: #f05d5e;
+
+  /* Helper aliases and compatibility shades */
+  --sa-placeholder: #64748b;
   --sa-text-primary: #f8fafc;
   --sa-text-secondary: #cbd5e1;
   --sa-text-muted: #94a3b8;
-  --sa-placeholder: #64748b;
-
-  --screenai-text: var(--sa-text-primary);
-  --screenai-text-secondary: var(--sa-text-secondary);
-  --screenai-text-muted: var(--sa-text-muted);
-  
-  /* Accents */
-  --screenai-primary: #6366f1;
   --screenai-primary-hover: #4f46e5;
-  --screenai-success: #10b981;
-  --screenai-warning: #f59e0b;
-  --screenai-danger: #ef4444;
-  --screenai-info: #06b6d4;
-  
-  /* Layout and Spacing */
   --screenai-radius: 0.75rem;
   --screenai-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --screenai-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -301,7 +295,7 @@ body {
 }
 
 .screenai-timeline-dot.scheduled {
-  background-color: var(--screenai-warning);
+  background-color: var(--screenai-text-muted);
 }
 
 .screenai-timeline-dot.cancelled {
@@ -563,3 +557,281 @@ textarea::-webkit-input-placeholder {
 .screenai-app .screenai-summary-box strong {
   color: var(--sa-text-primary) !important;
 }
+
+/* Custom Overrides for MUI X Data Grid in Dark Theme */
+.MuiDataGrid-root {
+  border: 1px solid var(--screenai-border) !important;
+  color: var(--sa-text-primary) !important;
+  background-color: var(--screenai-surface) !important;
+  font-family: inherit !important;
+}
+
+.MuiDataGrid-columnHeaders,
+.MuiDataGrid-columnHeader,
+.MuiDataGrid-columnHeaderRow,
+.MuiDataGrid-columnHeadersInner,
+.MuiDataGrid-filler,
+.MuiDataGrid-scrollbarFiller {
+  background-color: var(--screenai-surface-elevated) !important;
+  color: var(--sa-text-primary) !important;
+  border-bottom: 1px solid var(--screenai-border) !important;
+}
+
+.MuiDataGrid-columnHeaderTitle {
+  font-weight: 600 !important;
+  color: var(--sa-text-primary) !important;
+}
+
+.MuiDataGrid-cell {
+  border-bottom: 1px solid var(--screenai-border) !important;
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiDataGrid-row:hover {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+.MuiDataGrid-row.Mui-selected {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.MuiDataGrid-row.Mui-selected:hover {
+  background-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+.MuiTablePagination-root {
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiIconButton-root {
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiInputBase-root {
+  color: var(--sa-text-primary) !important;
+}
+
+.MuiDataGrid-paper {
+  background-color: var(--screenai-surface-elevated) !important;
+  border: 1px solid var(--screenai-border) !important;
+  color: var(--sa-text-primary) !important;
+}
+
+.screenai-selected-row {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.screenai-selected-row:hover {
+  background-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Bootstrap theme overrides for ScreenAI dark-theme design system */
+:root {
+  --bs-primary: #6366f1;
+  --bs-primary-rgb: 99, 102, 241;
+  --bs-success: #10b981;
+  --bs-success-rgb: 16, 185, 129;
+  --bs-danger: #f05d5e;
+  --bs-danger-rgb: 240, 93, 94;
+  --bs-secondary: #94a3b8;
+  --bs-secondary-rgb: 148, 163, 184;
+}
+
+/* Utilities classes overrides */
+.text-primary {
+  color: var(--screenai-primary) !important;
+}
+.bg-primary {
+  background-color: var(--screenai-primary) !important;
+}
+.border-primary {
+  border-color: var(--screenai-primary) !important;
+}
+.link-primary {
+  color: var(--screenai-primary) !important;
+}
+.link-primary:hover, .link-primary:focus {
+  color: var(--screenai-primary-hover) !important;
+}
+
+.text-success {
+  color: var(--screenai-success) !important;
+}
+.bg-success {
+  background-color: var(--screenai-success) !important;
+}
+.border-success {
+  border-color: var(--screenai-success) !important;
+}
+
+.text-danger {
+  color: var(--screenai-danger) !important;
+}
+.bg-danger {
+  background-color: var(--screenai-danger) !important;
+}
+.border-danger {
+  border-color: var(--screenai-danger) !important;
+}
+
+/* Buttons overriding */
+.btn-primary {
+  --bs-btn-color: var(--screenai-text);
+  --bs-btn-bg: var(--screenai-primary);
+  --bs-btn-border-color: var(--screenai-primary);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: var(--screenai-primary-hover);
+  --bs-btn-hover-border-color: var(--screenai-primary-hover);
+  --bs-btn-focus-shadow-rgb: 99, 102, 241;
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: var(--screenai-primary-hover);
+  --bs-btn-active-border-color: var(--screenai-primary-hover);
+  background-color: var(--screenai-primary) !important;
+  border-color: var(--screenai-primary) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+  background-color: var(--screenai-primary-hover) !important;
+  border-color: var(--screenai-primary-hover) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-primary:disabled {
+  background-color: var(--screenai-surface-elevated) !important;
+  border-color: var(--screenai-border) !important;
+  color: var(--screenai-text-muted) !important;
+  opacity: 0.65 !important;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--screenai-primary);
+  --bs-btn-border-color: var(--screenai-primary);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: var(--screenai-primary);
+  --bs-btn-hover-border-color: var(--screenai-primary);
+  --bs-btn-focus-shadow-rgb: 99, 102, 241;
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: var(--screenai-primary);
+  --bs-btn-active-border-color: var(--screenai-primary);
+  color: var(--screenai-primary) !important;
+  border-color: var(--screenai-primary) !important;
+  background-color: transparent !important;
+}
+.btn-outline-primary:hover, .btn-outline-primary:focus, .btn-outline-primary:active {
+  background-color: var(--screenai-primary) !important;
+  border-color: var(--screenai-primary) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-outline-primary:disabled {
+  color: var(--screenai-text-muted) !important;
+  border-color: var(--screenai-border) !important;
+  background-color: transparent !important;
+  opacity: 0.65 !important;
+}
+
+.btn-success {
+  --bs-btn-color: var(--screenai-text);
+  --bs-btn-bg: var(--screenai-success);
+  --bs-btn-border-color: var(--screenai-success);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: #0d9488;
+  --bs-btn-hover-border-color: #0d9488;
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: #0d9488;
+  --bs-btn-active-border-color: #0d9488;
+  background-color: var(--screenai-success) !important;
+  border-color: var(--screenai-success) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-success:hover, .btn-success:focus, .btn-success:active {
+  background-color: #0d9488 !important;
+  border-color: #0d9488 !important;
+  color: var(--screenai-text) !important;
+}
+.btn-success:disabled {
+  background-color: var(--screenai-surface-elevated) !important;
+  border-color: var(--screenai-border) !important;
+  color: var(--screenai-text-muted) !important;
+  opacity: 0.65 !important;
+}
+
+.btn-outline-success {
+  --bs-btn-color: var(--screenai-success);
+  --bs-btn-border-color: var(--screenai-success);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: var(--screenai-success);
+  --bs-btn-hover-border-color: var(--screenai-success);
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: var(--screenai-success);
+  --bs-btn-active-border-color: var(--screenai-success);
+  color: var(--screenai-success) !important;
+  border-color: var(--screenai-success) !important;
+  background-color: transparent !important;
+}
+.btn-outline-success:hover, .btn-outline-success:focus, .btn-outline-success:active {
+  background-color: var(--screenai-success) !important;
+  border-color: var(--screenai-success) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-outline-success:disabled {
+  color: var(--screenai-text-muted) !important;
+  border-color: var(--screenai-border) !important;
+  background-color: transparent !important;
+  opacity: 0.65 !important;
+}
+
+.btn-danger {
+  --bs-btn-color: var(--screenai-text);
+  --bs-btn-bg: var(--screenai-danger);
+  --bs-btn-border-color: var(--screenai-danger);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: #dc2626;
+  --bs-btn-hover-border-color: #dc2626;
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: #dc2626;
+  --bs-btn-active-border-color: #dc2626;
+  background-color: var(--screenai-danger) !important;
+  border-color: var(--screenai-danger) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-danger:hover, .btn-danger:focus, .btn-danger:active {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: var(--screenai-text) !important;
+}
+.btn-danger:disabled {
+  background-color: var(--screenai-surface-elevated) !important;
+  border-color: var(--screenai-border) !important;
+  color: var(--screenai-text-muted) !important;
+  opacity: 0.65 !important;
+}
+
+.btn-outline-danger {
+  --bs-btn-color: var(--screenai-danger);
+  --bs-btn-border-color: var(--screenai-danger);
+  --bs-btn-hover-color: var(--screenai-text);
+  --bs-btn-hover-bg: var(--screenai-danger);
+  --bs-btn-hover-border-color: var(--screenai-danger);
+  --bs-btn-active-color: var(--screenai-text);
+  --bs-btn-active-bg: var(--screenai-danger);
+  --bs-btn-active-border-color: var(--screenai-danger);
+  color: var(--screenai-danger) !important;
+  border-color: var(--screenai-danger) !important;
+  background-color: transparent !important;
+}
+.btn-outline-danger:hover, .btn-outline-danger:focus, .btn-outline-danger:active {
+  background-color: var(--screenai-danger) !important;
+  border-color: var(--screenai-danger) !important;
+  color: var(--screenai-text) !important;
+}
+.btn-outline-danger:disabled {
+  color: var(--screenai-text-muted) !important;
+  border-color: var(--screenai-border) !important;
+  background-color: transparent !important;
+  opacity: 0.65 !important;
+}
+
+/* Ensure focus states have visible outline and shadows */
+.btn:focus, .form-select:focus, .form-control:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.45) !important;
+}

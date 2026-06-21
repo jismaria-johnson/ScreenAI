@@ -212,9 +212,8 @@ STATIC_URL = "static/"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         (
-            "rest_framework_simplejwt."
-            "authentication."
-            "JWTAuthentication"
+            "accounts.authentication."
+            "CustomJWTAuthentication"
         ),
     ),
     # Use ScopedRateThrottle to rate limit only specific views/endpoints.
@@ -262,3 +261,8 @@ GEMINI_MODEL = os.getenv(
 DEFAULT_AUTO_FIELD = (
     "django.db.models.BigAutoField"
 )
+
+TRUST_PROXY_HEADERS = get_boolean_env(
+    "TRUST_PROXY_HEADERS",
+    False,
+)

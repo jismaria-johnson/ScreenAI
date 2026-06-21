@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import "../styles/PublicApplyJob.css";
 
@@ -29,7 +30,7 @@ export default function PublicApplyJob() {
     try {
       setLoading(true);
       const response = await axios.get(
-        `http://localhost:8000/api/jobs/public/${token}/`
+        `${API_BASE_URL}/jobs/public/${token}/`
       );
       setJob(response.data);
       setError(null);
@@ -151,7 +152,7 @@ export default function PublicApplyJob() {
       formDataToSend.append("resume", formData.resume);
 
       const response = await axios.post(
-        `http://localhost:8000/api/applications/public/${token}/`,
+        `${API_BASE_URL}/applications/public/${token}/`,
         formDataToSend,
         {
           headers: {

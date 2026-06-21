@@ -13,7 +13,8 @@ function Toast({ message, type = "success", onClose, duration = 4000 }) {
 
   let bgClass = "bg-success text-white shadow";
   if (type === "error") bgClass = "bg-danger text-white shadow";
-  if (type === "info") bgClass = "bg-info text-white shadow";
+  else if (type === "info") bgClass = "bg-primary text-white shadow";
+  else if (type === "warning") bgClass = "bg-secondary text-white shadow";
 
   return (
     <div

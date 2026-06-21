@@ -113,21 +113,44 @@ ScreenAI/
 ## Setup Instructions
 
 ### Environment Variables
+
+#### Backend (`backend/.env`)
 The Django backend requires a `.env` file inside the `backend/` directory. Create this file locally and define the following variables:
 
 ```env
+# Local Development
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash-lite
-
 DJANGO_SECRET_KEY=generate_a_secure_django_secret_key
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
-
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Production Example
+# GEMINI_API_KEY=your_production_gemini_key
+# GEMINI_MODEL=gemini-2.5-flash-lite
+# DJANGO_SECRET_KEY=secure-production-only-key
+# DJANGO_DEBUG=False
+# DJANGO_ALLOWED_HOSTS=api.screenai.com
+# CORS_ALLOWED_ORIGINS=https://screenai.com
 ```
 
+#### Frontend (`frontend/.env`)
+The React frontend loads environment variables starting with `VITE_` during build time. Copy the provided `frontend/.env.example` to `frontend/.env` to configure your environment variables:
+
+```env
+# Local Development Fallback
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+
+# Production Example
+# VITE_API_BASE_URL=https://api.screenai.com/api
+```
+
+> [!IMPORTANT]
+> **Vite Build-time Environments**: Vite injects environment variables statically into the production bundle during compilation. Therefore, `VITE_API_BASE_URL` must be configured in `frontend/.env` (or via system environment variables) **before** executing the production frontend build (`npm run build`).
+
 > [!WARNING]
-> Never commit the `.env` file or SQLite database (`db.sqlite3`) to git.
+> Never commit any `.env` file or SQLite database (`db.sqlite3`) to git.
 
 ### Running Backend
 

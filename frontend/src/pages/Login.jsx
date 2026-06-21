@@ -52,13 +52,31 @@ function Login() {
       return;
     }
 
-    if (
-      searchParams.get("session") ===
-      "expired"
-    ) {
+    const sessionParam = searchParams.get("session");
+    const passwordParam = searchParams.get("password");
+
+    if (sessionParam === "expired") {
       setTimeout(() => {
         setMessage(
           "Your session expired. Please log in again."
+        );
+      }, 0);
+    } else if (sessionParam === "revoked") {
+      setTimeout(() => {
+        setMessage(
+          "This session is no longer valid. Please log in again."
+        );
+      }, 0);
+    } else if (sessionParam === "suspended") {
+      setTimeout(() => {
+        setMessage(
+          "This account has been suspended. Please contact the administrator."
+        );
+      }, 0);
+    } else if (passwordParam === "changed") {
+      setTimeout(() => {
+        setMessage(
+          "Your password has been changed successfully. Please log in with your new password."
         );
       }, 0);
     }
@@ -128,19 +146,26 @@ function Login() {
       );
 
       const userRole = response.data.role || "hr";
+      const mustChange = response.data.must_change_password || false;
 
       saveAuthData({
         access: response.data.access,
         refresh: response.data.refresh,
         role: userRole,
+        must_change_password: mustChange,
       });
+
+      if (mustChange) {
+        navigate("/force-password-change", { replace: true });
+        return;
+      }
 
       const requestedPath =
         location.state?.from;
 
       navigate(
         requestedPath ||
-          getDashboardPath(),
+        getDashboardPath(),
         {
           replace: true,
         }
@@ -195,23 +220,18 @@ function Login() {
                 >
                   Username
                 </label>
-                <div className="input-group">
-                  <span className="input-group-text border-end-0" style={{ backgroundColor: "var(--screenai-surface-elevated)", color: "var(--screenai-text)", borderColor: "var(--screenai-border)" }}>
-                    👤
-                  </span>
-                  <input
-                    id="username"
-                    type="text"
-                    name="username"
-                    className="form-control border-start-0"
-                    placeholder="Enter username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    autoComplete="username"
-                    required
-                    disabled={loading}
-                  />
-                </div>
+                <input
+                  id="username"
+                  type="text"
+                  name="username"
+                  className="form-control"
+                  placeholder="Enter username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  autoComplete="username"
+                  required
+                  disabled={loading}
+                />
               </div>
 
               <div className="mb-4">
@@ -221,23 +241,18 @@ function Login() {
                 >
                   Password
                 </label>
-                <div className="input-group">
-                  <span className="input-group-text border-end-0" style={{ backgroundColor: "var(--screenai-surface-elevated)", color: "var(--screenai-text)", borderColor: "var(--screenai-border)" }}>
-                    🔒
-                  </span>
-                  <input
-                    id="password"
-                    type="password"
-                    name="password"
-                    className="form-control border-start-0"
-                    placeholder="Enter password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    autoComplete="current-password"
-                    required
-                    disabled={loading}
-                  />
-                </div>
+                <input
+                  id="password"
+                  type="password"
+                  name="password"
+                  className="form-control"
+                  placeholder="Enter password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                />
               </div>
 
               <button

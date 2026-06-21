@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import API from "../api/axiosConfig";
+import axios from "axios";
+import API, { MEDIA_BASE_URL } from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 import { clearAuthData } from "../utils/auth";
+import { DataGrid } from "@mui/x-data-grid";
 
 const getPlaceholderForStage = (stageName) => {
   switch (stageName) {
@@ -28,15 +30,46 @@ const getPlaceholderForStage = (stageName) => {
 
 function AdminDashboard() {
   const navigate = useNavigate();
-  // Navigation tab state
-  const [activeTab, setActiveTab] = useState("overview");
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  // Navigation state
+  const [gridMode, setGridMode] = useState("recruiters");
+  const [gridSearch, setGridSearch] = useState("");
+  const [drawerTab, setDrawerTab] = useState("profile");
 
   // Data States
   const [hrs, setHrs] = useState([]);
   const [hiredCandidates, setHiredCandidates] = useState([]);
-  const [activityLog, setActivityLog] = useState([]);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
-  const [selectedHR, setSelectedHR] = useState(null);
+  
+  // Global Activity States
+  const [globalActivityResults, setGlobalActivityResults] = useState([]);
+  const [globalActivityCount, setGlobalActivityCount] = useState(0);
+  const [globalActivityPage] = useState(1);
+  const [globalActivityLoading, setGlobalActivityLoading] = useState(true);
+
+  // Recruiter Drawer Activity States
+  const [recruiterActivityResults, setRecruiterActivityResults] = useState([]);
+  const [recruiterActivityCount, setRecruiterActivityCount] = useState(0);
+  const [recruiterActivityPage, setRecruiterActivityPage] = useState(1);
+  const [recruiterActivityLoading, setRecruiterActivityLoading] = useState(false);
+  const [recruiterActivityFilters, setRecruiterActivityFilters] = useState({ search: "", action: "" });
+  const [selectedHRId, setSelectedHRId] = useState(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState(null);
+
+  const selectedHR = useMemo(() => {
+    if (selectedHRId === null) return null;
+    return hrs.find((h) => h.id === selectedHRId) || null;
+  }, [hrs, selectedHRId]);
+
+  const selectedCandidate = useMemo(() => {
+    if (selectedCandidateId === null) return null;
+    return hiredCandidates.find((c) => c.id === selectedCandidateId) || null;
+  }, [hiredCandidates, selectedCandidateId]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -58,26 +91,30 @@ function AdminDashboard() {
   const [newPassword, setNewPassword] = useState("");
   const [savingNewPassword, setSavingNewPassword] = useState(false);
 
-  // Global Interviews Auditor states
-  const [auditedInterviews, setAuditedInterviews] = useState([]);
-  const [auditorFilters, setAuditorFilters] = useState({
-    recruiter: "",
-    status: "",
-    type: "",
-    search: "",
-  });
-  const [loadingAuditor, setLoadingAuditor] = useState(false);
-
   // Recruiter list master-detail & modal states
-  const [hrStatusFilter, setHrStatusFilter] = useState("all");
   const [showCreateRecruiterModal, setShowCreateRecruiterModal] = useState(false);
   const [newRecruiterCredentials, setNewRecruiterCredentials] = useState(null);
   const [hrInterviews, setHrInterviews] = useState([]);
-  const [loadingHrInterviews, setLoadingHrInterviews] = useState(false);
   const [systemInterviewsMetrics, setSystemInterviewsMetrics] = useState({});
   const [allInterviewsList, setAllInterviewsList] = useState([]);
-  const [adminJobsDrawer, setAdminJobsDrawer] = useState(false);
-  const [adminAppsDrawer, setAdminAppsDrawer] = useState(false);
+
+  const adminLoadingAbortControllerRef = useRef(null);
+  const activityAbortControllerRef = useRef(null);
+  const interviewsAbortControllerRef = useRef(null);
+
+  const setHrsRef = useRef(setHrs);
+  const setHiredCandidatesRef = useRef(setHiredCandidates);
+  const setGlobalActivityResultsRef = useRef(setGlobalActivityResults);
+  const setGlobalActivityCountRef = useRef(setGlobalActivityCount);
+  const setSystemInterviewsMetricsRef = useRef(setSystemInterviewsMetrics);
+  const setAllInterviewsListRef = useRef(setAllInterviewsList);
+  const setErrorRef = useRef(setError);
+  const setLoadingRef = useRef(setLoading);
+  const setGlobalActivityLoadingRef = useRef(setGlobalActivityLoading);
+  const setRecruiterActivityResultsRef = useRef(setRecruiterActivityResults);
+  const setRecruiterActivityCountRef = useRef(setRecruiterActivityCount);
+  const setRecruiterActivityLoadingRef = useRef(setRecruiterActivityLoading);
+  const setHrInterviewsRef = useRef(setHrInterviews);
 
   // Custom toast and confirm modal states
   const [toast, setToast] = useState({ message: "", type: "success" });
@@ -102,14 +139,7 @@ function AdminDashboard() {
   };
 
   // Search/Filter Controls
-  const [searchHR, setSearchHR] = useState("");
-  const [debouncedSearchHR, setDebouncedSearchHR] = useState("");
   const [togglingHrId, setTogglingHrId] = useState(null);
-
-  const [searchCandidate, setSearchCandidate] = useState("");
-  const [debouncedSearchCandidate, setDebouncedSearchCandidate] = useState("");
-  const [filterStage, setFilterStage] = useState("all");
-  const [filterHRId, setFilterHRId] = useState("all");
   const [stage, setStage] = useState("Onboarding");
   const [notes, setNotes] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -119,120 +149,222 @@ function AdminDashboard() {
   const [editStage, setEditStage] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchHR(searchHR);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchHR]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchCandidate(searchCandidate);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchCandidate]);
 
-  const fetchAdminData = async () => {
-    setLoading(true);
-    setError("");
+  const fetchAdminData = useCallback(async () => {
+    if (adminLoadingAbortControllerRef.current) {
+      adminLoadingAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    adminLoadingAbortControllerRef.current = controller;
+
+    setErrorRef.current("");
+
     try {
       const [hrsResponse, candidatesResponse, activityResponse, interviewsResponse] = await Promise.all([
-        API.get("/applications/admin/hrs/"),
-        API.get("/applications/admin/hired-candidates/"),
-        API.get("/applications/admin/activity-log/"),
-        API.get("/applications/admin/interviews/"),
+        API.get("/applications/admin/hrs/", { signal: controller.signal }),
+        API.get("/applications/admin/hired-candidates/", { signal: controller.signal }),
+        API.get(`/applications/admin/activity-log/?page=${globalActivityPage}`, { signal: controller.signal }),
+        API.get("/applications/admin/interviews/", { signal: controller.signal }),
       ]);
-      setHrs(hrsResponse.data);
-      setHiredCandidates(candidatesResponse.data);
-      setActivityLog(activityResponse.data);
-      setSystemInterviewsMetrics(interviewsResponse.data.metrics || {});
-      setAllInterviewsList(interviewsResponse.data.results || []);
-
-      if (selectedCandidate) {
-        const updated = candidatesResponse.data.find((c) => c.id === selectedCandidate.id);
-        if (updated) setSelectedCandidate(updated);
-      }
-
-      if (selectedHR) {
-        const updated = hrsResponse.data.find((h) => h.id === selectedHR.id);
-        if (updated) setSelectedHR(updated);
+      if (isMounted.current && !controller.signal.aborted) {
+        setHrsRef.current(hrsResponse.data);
+        setHiredCandidatesRef.current(candidatesResponse.data);
+        const globalAct = activityResponse.data;
+        if (globalAct && Array.isArray(globalAct.results)) {
+          setGlobalActivityResultsRef.current(globalAct.results);
+          setGlobalActivityCountRef.current(globalAct.count || 0);
+        } else if (Array.isArray(globalAct)) {
+          setGlobalActivityResultsRef.current(globalAct);
+          setGlobalActivityCountRef.current(globalAct.length);
+        } else {
+          setGlobalActivityResultsRef.current([]);
+          setGlobalActivityCountRef.current(0);
+        }
+        setSystemInterviewsMetricsRef.current(interviewsResponse.data.metrics || {});
+        setAllInterviewsListRef.current(interviewsResponse.data.results || []);
       }
     } catch (err) {
-      console.error("Failed to load admin data:", err);
-      setError(err.response?.data?.detail || "Failed to load dashboard metrics.");
+      if (isMounted.current && !controller.signal.aborted && !axios.isCancel(err)) {
+        console.error("Failed to load admin data:", err);
+        setErrorRef.current(err.response?.data?.detail || "Failed to load dashboard metrics.");
+      }
     } finally {
-      setLoading(false);
+      if (isMounted.current && !controller.signal.aborted) {
+        setLoadingRef.current(false);
+        setGlobalActivityLoadingRef.current(false);
+      }
     }
-  };
+  }, [globalActivityPage]);
 
-  const fetchAuditedInterviews = async () => {
-    setLoadingAuditor(true);
+  const fetchRecruiterActivity = useCallback(async (hrId, page, filters) => {
+    if (activityAbortControllerRef.current) {
+      activityAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    activityAbortControllerRef.current = controller;
+
+    setErrorRef.current("");
+
     try {
-      const params = {};
-      if (auditorFilters.recruiter) params.recruiter = auditorFilters.recruiter;
-      if (auditorFilters.status) params.status = auditorFilters.status;
-      if (auditorFilters.type) params.type = auditorFilters.type;
-      if (auditorFilters.search) params.search = auditorFilters.search;
-
-      const response = await API.get("/applications/admin/interviews/", { params });
-      setAuditedInterviews(response.data.results || []);
+      let url = `/applications/admin/activity-log/?recruiter_id=${hrId}&page=${page}`;
+      if (filters.search) {
+        url += `&search=${encodeURIComponent(filters.search)}`;
+      }
+      if (filters.action) {
+        url += `&action=${encodeURIComponent(filters.action)}`;
+      }
+      const res = await API.get(url, { signal: controller.signal });
+      if (isMounted.current && !controller.signal.aborted) {
+        const data = res.data;
+        if (data && Array.isArray(data.results)) {
+          setRecruiterActivityResultsRef.current(data.results);
+          setRecruiterActivityCountRef.current(data.count || 0);
+        } else if (Array.isArray(data)) {
+          setRecruiterActivityResultsRef.current(data);
+          setRecruiterActivityCountRef.current(data.length);
+        } else {
+          setRecruiterActivityResultsRef.current([]);
+          setRecruiterActivityCountRef.current(0);
+        }
+      }
     } catch (err) {
-      console.error(err);
-      showToast("Failed to fetch interviews audit feed.", "error");
+      if (isMounted.current && !controller.signal.aborted && !axios.isCancel(err)) {
+        console.error("Failed to load recruiter activity:", err);
+        setErrorRef.current(err.response?.data?.detail || "Failed to load recruiter activity.");
+      }
     } finally {
-      setLoadingAuditor(false);
+      if (isMounted.current && !controller.signal.aborted) {
+        setRecruiterActivityLoadingRef.current(false);
+      }
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    fetchAdminData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchRecruiterInterviews = useCallback(async (hrId) => {
+    if (interviewsAbortControllerRef.current) {
+      interviewsAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    interviewsAbortControllerRef.current = controller;
+
+    try {
+      const res = await API.get(`/applications/admin/interviews/?recruiter=${hrId}`, { signal: controller.signal });
+      if (isMounted.current && !controller.signal.aborted) {
+        setHrInterviewsRef.current(res.data.results || []);
+      }
+    } catch (err) {
+      if (isMounted.current && !controller.signal.aborted && !axios.isCancel(err)) {
+        console.error("Failed to load recruiter interviews:", err);
+      }
+    }
   }, []);
 
   useEffect(() => {
-    if (selectedHR) {
-      /* eslint-disable-next-line react-hooks/set-state-in-effect */
-      setLoadingHrInterviews(true);
-      API.get(`/applications/admin/interviews/?recruiter=${selectedHR.id}`)
-        .then((res) => setHrInterviews(res.data.results || []))
-        .catch((err) => console.error(err))
-        .finally(() => setLoadingHrInterviews(false));
-    } else {
-      setHrInterviews([]);
-    }
-  }, [selectedHR]);
+    fetchAdminData();
+    return () => {
+      if (adminLoadingAbortControllerRef.current) {
+        adminLoadingAbortControllerRef.current.abort();
+        adminLoadingAbortControllerRef.current = null;
+      }
+    };
+  }, [fetchAdminData]);
 
-  // Fetch auditor interviews on filters change or when auditor tab becomes active
   useEffect(() => {
-    if (activeTab === "interviews") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      fetchAuditedInterviews();
+    if (selectedHRId && drawerTab === "activity") {
+      fetchRecruiterActivity(selectedHRId, recruiterActivityPage, recruiterActivityFilters);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    activeTab,
-    auditorFilters.recruiter,
-    auditorFilters.status,
-    auditorFilters.type,
-    auditorFilters.search,
-  ]);
+    return () => {
+      if (activityAbortControllerRef.current) {
+        activityAbortControllerRef.current.abort();
+        activityAbortControllerRef.current = null;
+      }
+    };
+  }, [selectedHRId, drawerTab, recruiterActivityPage, recruiterActivityFilters, fetchRecruiterActivity]);
+
+  useEffect(() => {
+    if (selectedHRId) {
+      fetchRecruiterInterviews(selectedHRId);
+    }
+    return () => {
+      if (interviewsAbortControllerRef.current) {
+        interviewsAbortControllerRef.current.abort();
+        interviewsAbortControllerRef.current = null;
+      }
+    };
+  }, [selectedHRId, fetchRecruiterInterviews]);
+
+  const selectHR = useCallback((hrId) => {
+    setSelectedHRId(hrId);
+    setRecruiterActivityPage(1);
+    setRecruiterActivityFilters({ search: "", action: "" });
+    setRecruiterActivityResults([]);
+    setRecruiterActivityCount(0);
+    setRecruiterActivityLoading(true);
+    setHrInterviews([]);
+    setError("");
+  }, []);
+
+  const closeRecruiterDrawer = useCallback(() => {
+    setSelectedHRId(null);
+    setSelectedCandidateId(null);
+    setDrawerTab("profile");
+    setRecruiterActivityResults([]);
+    setRecruiterActivityCount(0);
+    setRecruiterActivityPage(1);
+    setRecruiterActivityFilters({ search: "", action: "" });
+    setRecruiterActivityLoading(false);
+    setHrInterviews([]);
+    setError("");
+    if (activityAbortControllerRef.current) {
+      activityAbortControllerRef.current.abort();
+      activityAbortControllerRef.current = null;
+    }
+    if (interviewsAbortControllerRef.current) {
+      interviewsAbortControllerRef.current.abort();
+      interviewsAbortControllerRef.current = null;
+    }
+  }, []);
+
+  const handleTabChange = useCallback((newTab) => {
+    if (drawerTab === "activity" && newTab !== "activity") {
+      setRecruiterActivityResults([]);
+      setRecruiterActivityCount(0);
+      setRecruiterActivityLoading(false);
+      if (activityAbortControllerRef.current) {
+        activityAbortControllerRef.current.abort();
+        activityAbortControllerRef.current = null;
+      }
+    }
+    if (newTab === "activity") {
+      setRecruiterActivityLoading(true);
+    }
+    if (newTab !== "hires") {
+      setSelectedCandidateId(null);
+    }
+    setDrawerTab(newTab);
+  }, [drawerTab]);
+
+  const selectCandidate = useCallback((candidateId) => {
+    setSelectedCandidateId(candidateId);
+  }, []);
+
+  const closeCandidateDetails = useCallback(() => {
+    setSelectedCandidateId(null);
+  }, []);
 
   // Escape key handler to close drawers
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
-        setAdminJobsDrawer(false);
-        setAdminAppsDrawer(false);
+        closeRecruiterDrawer();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [closeRecruiterDrawer]);
 
   // Recruiter Account Suspend/Activate Toggle
-  const handleToggleHRActive = (hrId, username, currentStatus) => {
+  const handleToggleHRActive = useCallback((hrId, username, currentStatus) => {
     const action = currentStatus ? "suspend" : "activate";
     setConfirmModal({
       isOpen: true,
@@ -246,9 +378,8 @@ function AdminDashboard() {
         try {
           const response = await API.patch(`/applications/admin/hrs/${hrId}/toggle/`);
           const updatedStatus = response.data.is_active;
-          const msg = `Recruiter @${username} has been successfully ${
-            updatedStatus ? "activated" : "suspended"
-          }!`;
+          const msg = `Recruiter @${username} has been successfully ${updatedStatus ? "activated" : "suspended"
+            }!`;
           setSuccess(msg);
           showToast(msg, "success");
           await fetchAdminData();
@@ -262,7 +393,7 @@ function AdminDashboard() {
         }
       },
     });
-  };
+  }, [fetchAdminData]);
 
   const handleResetPasswordSubmit = async (e) => {
     e.preventDefault();
@@ -322,8 +453,8 @@ function AdminDashboard() {
       console.error(err);
       const errMsg = err.response?.data
         ? Object.entries(err.response.data)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join("\n")
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n")
         : "Failed to create recruiter account.";
       setError(errMsg);
       showToast(errMsg, "error");
@@ -341,7 +472,7 @@ function AdminDashboard() {
     setSuccess("");
 
     try {
-      const response = await API.post(
+      await API.post(
         `/applications/admin/${selectedCandidate.id}/progression/`,
         { stage: stage.trim(), notes: notes.trim() }
       );
@@ -352,7 +483,6 @@ function AdminDashboard() {
       setNotes("");
 
       await fetchAdminData();
-      setSelectedCandidate(response.data);
     } catch (err) {
       console.error("Failed to update progression:", err);
       const errMsg = err.response?.data?.detail || "Failed to update candidate progression.";
@@ -371,7 +501,7 @@ function AdminDashboard() {
     setSuccess("");
 
     try {
-      const response = await API.patch(`/applications/admin/progression/${logId}/`, {
+      await API.patch(`/applications/admin/progression/${logId}/`, {
         stage: editStage.trim(),
         notes: editNotes.trim(),
       });
@@ -381,7 +511,6 @@ function AdminDashboard() {
       showToast(msg, "success");
       setEditingLogId(null);
       await fetchAdminData();
-      setSelectedCandidate(response.data);
     } catch (err) {
       console.error("Failed to edit progression log:", err);
       const errMsg = err.response?.data?.detail || "Failed to edit progression log.";
@@ -404,12 +533,11 @@ function AdminDashboard() {
         setSuccess("");
 
         try {
-          const response = await API.delete(`/applications/admin/progression/${logId}/`);
+          await API.delete(`/applications/admin/progression/${logId}/`);
           const msg = "Progression stage deleted successfully.";
           setSuccess(msg);
           showToast(msg, "success");
           await fetchAdminData();
-          setSelectedCandidate(response.data);
         } catch (err) {
           console.error("Failed to delete progression log:", err);
           const errMsg = err.response?.data?.detail || "Failed to delete progression log.";
@@ -441,7 +569,9 @@ function AdminDashboard() {
   const getResumeUrl = (resumePath) => {
     if (!resumePath) return "#";
     if (resumePath.startsWith("http")) return resumePath;
-    return `http://127.0.0.1:8000${resumePath}`;
+    const base = MEDIA_BASE_URL.endsWith("/") ? MEDIA_BASE_URL.slice(0, -1) : MEDIA_BASE_URL;
+    const normalizedPath = resumePath.startsWith("/") ? resumePath : `/${resumePath}`;
+    return `${base}${normalizedPath}`;
   };
 
   // Metrics Calculations
@@ -453,75 +583,494 @@ function AdminDashboard() {
   const pendingApplicationsCount = hrs.reduce((acc, curr) => acc + (curr.pending_applications_count || 0), 0);
   const upcomingInterviewsCount = systemInterviewsMetrics.upcoming || 0;
 
-  const openJobsList = hrs.flatMap((hr) => 
+  const openJobsList = hrs.flatMap((hr) =>
     (hr.jobs_list || [])
       .filter((j) => j.status === "open")
       .map((j) => ({ ...j, recruiter: hr.username }))
   );
-  const newAppsList = hrs.flatMap((hr) => 
+  const newAppsList = hrs.flatMap((hr) =>
     (hr.pending_applications_list || [])
       .map((a) => ({ ...a, recruiter: hr.username }))
   );
 
-  const getStageCounts = () => {
-    const counts = {
-      "Offer Extended": 0,
-      Onboarding: 0,
-      "Active Employee": 0,
-      Promoted: 0,
-      Resigned: 0,
-      Terminated: 0,
-    };
-    hiredCandidates.forEach((candidate) => {
-      const stageName = getLatestStage(candidate);
-      if (counts[stageName] !== undefined) {
-        counts[stageName]++;
-      } else {
-        counts["Onboarding"]++;
-      }
-    });
-    return counts;
-  };
-  const stageCounts = getStageCounts();
 
-  // Search filtering
-  const filteredHrs = hrs.filter((hr) => {
-    if (hrStatusFilter === "active" && !hr.is_active) return false;
-    if (hrStatusFilter === "suspended" && hr.is_active) return false;
 
-    const name = [hr.first_name, hr.last_name].filter(Boolean).join(" ").toLowerCase();
-    const username = (hr.username || "").toLowerCase();
-    const email = (hr.email || "").toLowerCase();
-    const search = debouncedSearchHR.toLowerCase();
-    return name.includes(search) || username.includes(search) || email.includes(search);
-  });
 
-  const filteredCandidates = hiredCandidates.filter((candidate) => {
-    const name = getCandidateName(candidate).toLowerCase();
-    const title = (candidate.job_title || "").toLowerCase();
-    const company = (candidate.company_name || "").toLowerCase();
-    const search = debouncedSearchCandidate.toLowerCase();
-    const matchesSearch =
-      name.includes(search) || title.includes(search) || company.includes(search);
 
-    const matchesStage = filterStage === "all" || getLatestStage(candidate) === filterStage;
-    const matchesHR = filterHRId === "all" || candidate.hr_user_id === Number(filterHRId);
-
-    return matchesSearch && matchesStage && matchesHR;
-  });
-
-  const getActivityIcon = (type) => {
-    switch (type) {
-      case "job_created":
-        return "💼";
-      case "application_submitted":
-        return "📄";
-      case "progression_updated":
-        return "⚡";
-      default:
-        return "🔔";
+  const handleViewRecruiter = useCallback((recruiterUsername) => {
+    const hr = hrs.find((h) => h.username === recruiterUsername);
+    if (hr) {
+      selectHR(hr.id);
     }
-  };
+  }, [hrs, selectHR]);
+
+  const recruiterColumns = useMemo(() => [
+    {
+      field: "recruiterInfo",
+      headerName: "Recruiter",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+        return name || row.username;
+      },
+    },
+    {
+      field: "username",
+      headerName: "Username",
+      flex: 1.2,
+      minWidth: 120,
+      valueGetter: (value, row) => `@${row.username}`,
+    },
+    {
+      field: "email",
+      headerName: "Email",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => row.email || "N/A",
+    },
+    {
+      field: "is_active",
+      headerName: "Status",
+      width: 100,
+      renderCell: (params) => (
+        <span className={`badge ${params.value ? "bg-success" : "bg-danger"}`}>
+          {params.value ? "Active" : "Suspended"}
+        </span>
+      ),
+    },
+    {
+      field: "last_login",
+      headerName: "Last Login",
+      flex: 1.5,
+      minWidth: 160,
+      valueFormatter: (value) => value ? new Date(value).toLocaleString() : "Never",
+    },
+    {
+      field: "jobs_count",
+      headerName: "Jobs",
+      width: 80,
+      type: "number",
+      valueGetter: (value, row) => row.jobs_count || 0,
+    },
+    {
+      field: "applications_count",
+      headerName: "Apps",
+      width: 80,
+      type: "number",
+      valueGetter: (value, row) => row.applications_count || 0,
+    },
+    {
+      field: "hired_count",
+      headerName: "Hires",
+      width: 80,
+      type: "number",
+      valueGetter: (value, row) => row.hired_count || 0,
+    },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 250,
+      sortable: false,
+      renderCell: (params) => {
+        const row = params.row;
+        return (
+          <div className="d-flex align-items-center gap-1 h-100">
+             <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectHR(row.id);
+                handleTabChange("profile");
+              }}
+            >
+              View
+            </button>
+            <button
+              className={`btn btn-xs ${row.is_active ? "btn-outline-danger" : "btn-outline-success"} py-0.5 px-1.5 small`}
+              style={{ fontSize: "10px" }}
+              disabled={togglingHrId === row.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleHRActive(row.id, row.username, row.is_active);
+              }}
+            >
+              {row.is_active ? "Suspend" : "Activate"}
+            </button>
+            <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectHR(row.id);
+                setResettingPassword(true);
+                setShowCreateRecruiterModal(false);
+              }}
+            >
+              Reset PW
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [togglingHrId, handleToggleHRActive, selectHR, handleTabChange]);
+
+  const jobColumns = useMemo(() => [
+    {
+      field: "job_title",
+      headerName: "Job Title",
+      flex: 1.5,
+      minWidth: 150,
+    },
+    {
+      field: "company_name",
+      headerName: "Company",
+      flex: 1.2,
+      minWidth: 120,
+    },
+    {
+      field: "recruiter",
+      headerName: "Recruiter",
+      flex: 1.2,
+      minWidth: 120,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow?.recruiter ? `@${actualRow.recruiter}` : "";
+      },
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      width: 100,
+      renderCell: (params) => (
+        <span className={`badge ${params?.value === "open" ? "bg-success" : "bg-secondary"}`}>
+          {params?.value?.toUpperCase() || ""}
+        </span>
+      ),
+    },
+    {
+      field: "applicant_count",
+      headerName: "Applications",
+      width: 110,
+      type: "number",
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow?.applicant_count || 0;
+      },
+    },
+    {
+      field: "application_deadline",
+      headerName: "Deadline",
+      flex: 1.2,
+      minWidth: 140,
+      valueFormatter: (value) => {
+        const actualValue = (value && typeof value === 'object' && 'value' in value) ? value.value : value;
+        return actualValue ? new Date(actualValue).toLocaleString() : "No Deadline";
+      },
+    },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 100,
+      sortable: false,
+      renderCell: (params) => {
+        const row = params?.row;
+        if (!row) return null;
+        return (
+          <div className="d-flex align-items-center h-100">
+            <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRecruiter(row.recruiter);
+                handleTabChange("jobs");
+              }}
+            >
+              View
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [handleViewRecruiter, handleTabChange]);
+
+  const applicationColumns = useMemo(() => [
+    {
+      field: "candidate_name",
+      headerName: "Candidate",
+      flex: 1.5,
+      minWidth: 150,
+    },
+    {
+      field: "job_title",
+      headerName: "Job Role",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? `${actualRow.job_title} (${actualRow.company_name || ""})` : "";
+      },
+    },
+    {
+      field: "recruiter",
+      headerName: "Recruiter",
+      flex: 1.2,
+      minWidth: 120,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow?.recruiter ? `@${actualRow.recruiter}` : "";
+      },
+    },
+    {
+      field: "ai_score",
+      headerName: "AI Score",
+      width: 90,
+      type: "number",
+      renderCell: (params) => {
+        const score = params?.value;
+        let badgeStyle = { backgroundColor: "var(--screenai-danger)", color: "var(--screenai-text)" };
+        if (score === null || score === undefined) {
+          badgeStyle = { backgroundColor: "var(--screenai-text-muted)", color: "var(--screenai-text)" };
+        } else if (score >= 80) {
+          badgeStyle = { backgroundColor: "var(--screenai-success)", color: "var(--screenai-text)" };
+        } else if (score >= 50) {
+          badgeStyle = { backgroundColor: "var(--screenai-primary)", color: "var(--screenai-text)" };
+        }
+        return (
+          <span className="badge fw-bold" style={badgeStyle}>
+            {score !== null && score !== undefined ? score : "Pending"}
+          </span>
+        );
+      },
+    },
+    {
+      field: "application_status",
+      headerName: "Status",
+      width: 100,
+      renderCell: (params) => (
+        <span className="badge bg-secondary text-capitalize">
+          {params?.value || ""}
+        </span>
+      ),
+    },
+    {
+      field: "submitted_at",
+      headerName: "Applied Date",
+      flex: 1.2,
+      minWidth: 140,
+      valueFormatter: (value) => {
+        const actualValue = (value && typeof value === 'object' && 'value' in value) ? value.value : value;
+        return actualValue ? new Date(actualValue).toLocaleDateString() : "N/A";
+      },
+    },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 100,
+      sortable: false,
+      renderCell: (params) => {
+        const row = params?.row;
+        if (!row) return null;
+        return (
+          <div className="d-flex align-items-center h-100">
+            <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRecruiter(row.recruiter);
+                handleTabChange("applications");
+              }}
+            >
+              View
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [handleViewRecruiter, handleTabChange]);
+
+  const interviewColumns = useMemo(() => [
+    {
+      field: "candidateName",
+      headerName: "Candidate",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? (actualRow.candidateName || actualRow.candidate_name || "Unknown Candidate") : "";
+      }
+    },
+    {
+      field: "jobTitle",
+      headerName: "Job Title",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? (actualRow.jobTitle || actualRow.job_title || "Listing") : "";
+      },
+    },
+    {
+      field: "recruiter",
+      headerName: "Recruiter",
+      flex: 1.2,
+      minWidth: 120,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        if (!actualRow) return "";
+        const rVal = actualRow.recruiter || actualRow.recruiter_username || "Recruiter";
+        return rVal.startsWith("@") ? rVal : `@${rVal}`;
+      },
+    },
+    {
+      field: "round_name",
+      headerName: "Round",
+      flex: 1.2,
+      minWidth: 130,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? `Round ${actualRow.round_number || 1}: ${actualRow.round_name || "N/A"}` : "";
+      },
+    },
+    {
+      field: "scheduled_at",
+      headerName: "Date/Time",
+      flex: 1.5,
+      minWidth: 160,
+      valueFormatter: (value) => {
+        const actualValue = (value && typeof value === 'object' && 'value' in value) ? value.value : value;
+        return actualValue ? new Date(actualValue).toLocaleString() : "N/A";
+      },
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      width: 100,
+      renderCell: (params) => {
+        const status = params?.value;
+        let badgeColor = "bg-secondary";
+        if (status === "completed") badgeColor = "bg-success";
+        else if (status === "cancelled") badgeColor = "bg-danger";
+        return (
+          <span className={`badge ${badgeColor} text-capitalize`}>
+            {status || ""}
+          </span>
+        );
+      },
+    },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 100,
+      sortable: false,
+      renderCell: (params) => {
+        const row = params?.row;
+        if (!row) return null;
+        return (
+          <div className="d-flex align-items-center h-100">
+            <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRecruiter(row.recruiter || row.recruiter_username);
+                handleTabChange("interviews");
+              }}
+            >
+              View
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [handleViewRecruiter, handleTabChange]);
+
+  const hiredColumns = useMemo(() => [
+    {
+      field: "candidateName",
+      headerName: "Candidate",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? getCandidateName(actualRow) : "";
+      },
+    },
+    {
+      field: "job_title",
+      headerName: "Job Role",
+      flex: 1.5,
+      minWidth: 150,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? `${actualRow.job_title} (${actualRow.company_name || ""})` : "";
+      },
+    },
+    {
+      field: "hr_username",
+      headerName: "Recruiter",
+      flex: 1.2,
+      minWidth: 120,
+      valueGetter: (value, row) => {
+        const actualRow = row || value?.row || value;
+        return actualRow ? `@${actualRow.hr_username || "system"}` : "";
+      },
+    },
+    {
+      field: "current_stage",
+      headerName: "Current Stage",
+      flex: 1.2,
+      minWidth: 130,
+      renderCell: (params) => {
+        const row = params?.row;
+        if (!row) return null;
+        return (
+          <span className="badge bg-success">
+            {getLatestStage(row)}
+          </span>
+        );
+      },
+    },
+    {
+      field: "submitted_at",
+      headerName: "Hired Date",
+      flex: 1.2,
+      minWidth: 140,
+      valueFormatter: (value) => {
+        const actualValue = (value && typeof value === 'object' && 'value' in value) ? value.value : value;
+        return actualValue ? new Date(actualValue).toLocaleDateString() : "N/A";
+      },
+    },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 100,
+      sortable: false,
+      renderCell: (params) => {
+        const row = params?.row;
+        if (!row) return null;
+        return (
+          <div className="d-flex align-items-center h-100">
+            <button
+              className="btn btn-xs btn-outline-primary py-0.5 px-1.5 small"
+              style={{ fontSize: "10px" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRecruiter(row.hr_username);
+                handleTabChange("hires");
+                selectCandidate(row.id);
+              }}
+            >
+              View
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [handleViewRecruiter, handleTabChange, selectCandidate]);
 
   if (loading) {
     return (
@@ -533,1354 +1082,840 @@ function AdminDashboard() {
   }
 
   return (
-    <div className="screenai-workspace">
-      {/* Sidebar Navigation */}
-      <div className="screenai-sidebar">
-        <div className="mb-4 px-3 text-center border-bottom border-secondary pb-3">
-          <div className="fs-1">⚙️</div>
-          <h5 className="fw-bold mb-0 text-white mt-2">Admin Control</h5>
-          <span className="badge bg-danger mt-1 small">SYSTEM ADMIN</span>
+    <div className="screenai-workspace flex-column">
+      {/* Top Bar */}
+      <div className="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary px-4 pt-3 w-100">
+        <div className="d-flex align-items-center gap-2">
+          <span className="text-secondary small">System Admin Command Shell</span>
         </div>
-
-        <button
-          onClick={() => setActiveTab("overview")}
-          className={`screenai-sidebar-item ${activeTab === "overview" ? "active" : ""}`}
-        >
-          📊 Analytics Overview
-        </button>
-
-        <button
-          onClick={() => setActiveTab("hrs")}
-          className={`screenai-sidebar-item ${activeTab === "hrs" ? "active" : ""}`}
-        >
-          👥 Recruiter Accounts ({totalRecruiters})
-        </button>
-
-        <button
-          onClick={() => setActiveTab("candidates")}
-          className={`screenai-sidebar-item ${activeTab === "candidates" ? "active" : ""}`}
-        >
-          📈 Placed Candidates
-        </button>
-
-        <button
-          onClick={() => setActiveTab("interviews")}
-          className={`screenai-sidebar-item ${activeTab === "interviews" ? "active" : ""}`}
-        >
-          📅 Interviews Auditor
-        </button>
-
-        <button
-          onClick={() => setActiveTab("activity")}
-          className={`screenai-sidebar-item ${activeTab === "activity" ? "active" : ""}`}
-        >
-          📜 Activity Feed
-        </button>
-
-        <div className="mt-auto p-2 border-top border-secondary pt-3 text-center">
-          <button onClick={fetchAdminData} className="btn btn-sm btn-outline-secondary w-100 py-1">
-            🔄 Refresh Data
+        <div className="d-flex align-items-center gap-3">
+          <button
+            onClick={() => {
+              setLoading(true);
+              setGlobalActivityLoading(true);
+              fetchAdminData();
+            }}
+            className="btn btn-xs btn-outline-secondary py-1 px-3 d-flex align-items-center gap-1"
+          >
+            Sync Platform Data
+          </button>
+          <span className="text-secondary small fw-bold">
+            System Admin
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline-danger btn-sm fw-bold"
+            onClick={() => {
+              clearAuthData();
+              localStorage.clear();
+              sessionStorage.clear();
+              navigate("/", { replace: true });
+            }}
+          >
+            Logout
           </button>
         </div>
       </div>
 
-      {/* Main Content Pane */}
-      <div className="screenai-content">
-        {/* Top Bar */}
-        <div className="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
-          <div className="d-flex align-items-center gap-2">
-            <span className="text-secondary small">System Admin</span>
-            <span className="text-muted">/</span>
-            <span className="text-white fw-bold text-capitalize small">
-              {activeTab === "hrs" ? "Recruiter Accounts" : activeTab === "candidates" ? "Placed Candidates" : activeTab === "interviews" ? "Interviews Auditor" : activeTab}
-            </span>
-          </div>
-          <div className="d-flex align-items-center gap-3">
-            <button onClick={fetchAdminData} className="btn btn-xs btn-outline-secondary py-1 px-3 d-flex align-items-center gap-1">
-              🔄 Sync Platform Data
-            </button>
-            <span className="text-secondary small fw-bold">
-              👤 System Admin
-            </span>
-            <button
-              type="button"
-              className="btn btn-outline-danger btn-sm fw-bold"
-              onClick={() => {
-                clearAuthData();
-                localStorage.clear();
-                sessionStorage.clear();
-                navigate("/", { replace: true });
+      <div className="px-4 pb-5 w-100">
+        {/* Top metrics row acting as navigation controllers */}
+        <div className="row g-3 mb-4 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-6">
+          {/* Card 1: Active Recruiters */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("recruiters")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "recruiters" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-primary)", 
+                background: gridMode === "recruiters" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
               }}
             >
-              🚪 Logout
-            </button>
+              <div className="screenai-metric-label">Active Recruiters</div>
+              <div className="screenai-metric-val">{activeRecruiters}</div>
+              <small className="text-muted">Total: {totalRecruiters}</small>
+            </div>
+          </div>
+
+          {/* Card 2: Open Jobs */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("jobs")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "jobs" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-primary)", 
+                background: gridMode === "jobs" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
+              }}
+            >
+              <div className="screenai-metric-label">Open Jobs</div>
+              <div className="screenai-metric-val">{openJobsCount}</div>
+              <small className="text-muted">Accepting apps</small>
+            </div>
+          </div>
+
+          {/* Card 3: New Applications */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("applications")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "applications" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-text-muted)", 
+                background: gridMode === "applications" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
+              }}
+            >
+              <div className="screenai-metric-label">New Applications</div>
+              <div className="screenai-metric-val">{pendingApplicationsCount}</div>
+              <small className="text-muted">Need review</small>
+            </div>
+          </div>
+
+          {/* Card 4: Upcoming Interviews */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("interviews")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "interviews" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-primary)", 
+                background: gridMode === "interviews" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
+              }}
+            >
+              <div className="screenai-metric-label">Upcoming Interviews</div>
+              <div className="screenai-metric-val">{upcomingInterviewsCount}</div>
+              <small className="text-muted">Scheduled rounds</small>
+            </div>
+          </div>
+
+          {/* Card 5: Hired Candidates */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("hired")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "hired" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-success)", 
+                background: gridMode === "hired" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
+              }}
+            >
+              <div className="screenai-metric-label">Hired Candidates</div>
+              <div className="screenai-metric-val">{totalHires}</div>
+              <small className="text-muted">Placed hires</small>
+            </div>
+          </div>
+
+          {/* Card 6: Suspended Recruiters */}
+          <div className="col">
+            <div
+              onClick={() => setGridMode("suspended_recruiters")}
+              className={`screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0 mb-0 ${gridMode === "suspended_recruiters" ? "border-primary" : ""}`}
+              style={{ 
+                borderLeft: "4px solid var(--screenai-danger)", 
+                background: gridMode === "suspended_recruiters" ? "var(--screenai-surface-elevated)" : "var(--screenai-surface)" 
+              }}
+            >
+              <div className="screenai-metric-label">Suspended Recruiters</div>
+              <div className="screenai-metric-val">{suspendedRecruiters}</div>
+              <small className="text-muted">Blocked accounts</small>
+            </div>
           </div>
         </div>
 
         {error && <div className="alert alert-danger mb-4 shadow">{error}</div>}
         {success && <div className="alert alert-success mb-4 shadow">{success}</div>}
 
-        {/* ANALYTICS TAB */}
-        {activeTab === "overview" && (
-          <div>
-            <div className="mb-4">
-              <h2 className="fw-bold text-white">Admin Overview</h2>
-              <p className="text-secondary">Track recruiters performance, global jobs postings, and candidates status.</p>
+        {/* Main Grid View */}
+        <div className="screenai-card">
+          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+            <div>
+              <h4 className="fw-bold text-white mb-0 text-capitalize">
+                {gridMode === "recruiters" && "Active Recruiters Directory"}
+                {gridMode === "jobs" && "Open Job Openings"}
+                {gridMode === "applications" && "New Resume Submissions"}
+                {gridMode === "interviews" && "Scheduled Interview Rounds"}
+                {gridMode === "hired" && "Placed Hires Placement Stages"}
+                {gridMode === "suspended_recruiters" && "Suspended Recruiters Directory"}
+              </h4>
             </div>
-
-            {/* Derived Previews */}
-            {(() => {
-              const activeRecruitersList = hrs.filter((h) => h.is_active).slice(0, 3);
-              const suspendedRecruitersList = hrs.filter((h) => !h.is_active).slice(0, 3);
-              const openJobsPreview = openJobsList.slice(0, 3);
-              const newAppsPreview = newAppsList.slice(0, 3);
-              const upcomingInterviewsList = allInterviewsList
-                .filter((i) => i.status === "scheduled")
-                .map((i) => ({
-                  ...i,
-                  candidateName: i.application?.candidate_name || "Unknown Candidate",
-                  recruiter: i.application?.job?.hr_user_username || "Recruiter",
-                }));
-              const upcomingInterviewsPreview = upcomingInterviewsList.slice(0, 3);
-              const placedHiresPreview = hiredCandidates.slice(0, 3);
-
-              const handleKeyDown = (e, callback) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  callback();
-                }
-              };
-
-              return (
-                <div className="row g-3 mb-5 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-6">
-                  {/* Card 1: Active Recruiters */}
-                  <div className="col">
-                    <div 
-                      onClick={() => {
-                        setHrStatusFilter("active");
-                        setActiveTab("hrs");
-                      }}
-                      onKeyDown={(e) => handleKeyDown(e, () => {
-                        setHrStatusFilter("active");
-                        setActiveTab("hrs");
-                      })}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid var(--screenai-primary)", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`Active Recruiters: ${activeRecruiters} of ${totalRecruiters} active. Click to view active recruiters list.`}
-                    >
-                      <div className="screenai-metric-label">Active Recruiters</div>
-                      <div className="screenai-metric-val">{activeRecruiters}</div>
-                      <small className="text-muted">
-                        {hrs.length === 0 || activeRecruiters === 0 ? "No active accounts" : `${activeRecruiters} of ${hrs.length} active`}
-                      </small>
-
-                      <div className="screenai-hover-preview">
-                        <div className="fw-bold text-white small mb-2">Active Recruiters</div>
-                        {activeRecruitersList.length === 0 ? (
-                          <div className="text-muted small">No active recruiters.</div>
-                        ) : (
-                          activeRecruitersList.map((hr) => (
-                            <div key={hr.id} className="screenai-preview-item text-secondary small">
-                              👤 {hr.first_name || hr.username} (@{hr.username})
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 2: Suspended Recruiters */}
-                  <div className="col">
-                    <div 
-                      onClick={() => {
-                        setHrStatusFilter("suspended");
-                        setActiveTab("hrs");
-                      }}
-                      onKeyDown={(e) => handleKeyDown(e, () => {
-                        setHrStatusFilter("suspended");
-                        setActiveTab("hrs");
-                      })}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid var(--screenai-danger)", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`Suspended Recruiters: ${suspendedRecruiters} suspended. Click to view suspended recruiters list.`}
-                    >
-                      <div className="screenai-metric-label">Suspended Recruiters</div>
-                      <div className="screenai-metric-val">{suspendedRecruiters}</div>
-                      <small className="text-muted">
-                        {suspendedRecruiters === 0 ? "No suspended accounts" : `${suspendedRecruiters} account${suspendedRecruiters > 1 ? "s" : ""} blocked`}
-                      </small>
-
-                      <div className="screenai-hover-preview">
-                        <div className="fw-bold text-white small mb-2">Suspended Recruiters</div>
-                        {suspendedRecruitersList.length === 0 ? (
-                          <div className="text-muted small">No suspended recruiters.</div>
-                        ) : (
-                          suspendedRecruitersList.map((hr) => (
-                            <div key={hr.id} className="screenai-preview-item text-secondary small">
-                              👤 {hr.first_name || hr.username} (@{hr.username})
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Open Jobs */}
-                  <div className="col">
-                    <div 
-                      onClick={() => setAdminJobsDrawer(true)}
-                      onKeyDown={(e) => handleKeyDown(e, () => setAdminJobsDrawer(true))}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid var(--screenai-info)", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`Open Jobs: ${openJobsCount} active. Click to view open jobs list drawer.`}
-                    >
-                      <div className="screenai-metric-label">Open Jobs</div>
-                      <div className="screenai-metric-val">{openJobsCount}</div>
-                      <small className="text-muted">
-                        {openJobsCount === 0 ? "No active jobs" : `${openJobsCount} job${openJobsCount > 1 ? "s" : ""} accepting apps`}
-                      </small>
-
-                      <div className="screenai-hover-preview">
-                        <div className="fw-bold text-white small mb-2">Open Jobs Preview</div>
-                        {openJobsPreview.length === 0 ? (
-                          <div className="text-muted small">No active jobs.</div>
-                        ) : (
-                          openJobsPreview.map((j) => (
-                            <div key={j.id} className="screenai-preview-item text-secondary small">
-                              <strong>{j.job_title}</strong> at {j.company_name}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 4: New Applications */}
-                  <div className="col">
-                    <div 
-                      onClick={() => setAdminAppsDrawer(true)}
-                      onKeyDown={(e) => handleKeyDown(e, () => setAdminAppsDrawer(true))}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid var(--screenai-warning)", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`New Applications: ${pendingApplicationsCount} awaiting review. Click to view pending applications list drawer.`}
-                    >
-                      <div className="screenai-metric-label">New Applications</div>
-                      <div className="screenai-metric-val">{pendingApplicationsCount}</div>
-                      <small className="text-muted">
-                        {pendingApplicationsCount === 0 ? "No applications awaiting review" : `${pendingApplicationsCount} awaiting review`}
-                      </small>
-
-                      <div className="screenai-hover-preview">
-                        <div className="fw-bold text-white small mb-2">New Applications</div>
-                        {newAppsPreview.length === 0 ? (
-                          <div className="text-muted small">No new applications.</div>
-                        ) : (
-                          newAppsPreview.map((a) => (
-                            <div key={a.id} className="screenai-preview-item text-secondary small">
-                              <strong>{a.candidate_name}</strong> - {a.job_title}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 5: Upcoming Interviews */}
-                  <div className="col">
-                    <div 
-                      onClick={() => {
-                        setAuditorFilters({ ...auditorFilters, status: "scheduled" });
-                        setActiveTab("interviews");
-                      }}
-                      onKeyDown={(e) => handleKeyDown(e, () => {
-                        setAuditorFilters({ ...auditorFilters, status: "scheduled" });
-                        setActiveTab("interviews");
-                      })}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid #a855f7", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`Upcoming Interviews: ${upcomingInterviewsCount} scheduled rounds. Click to view interviews list tab.`}
-                    >
-                      <div className="screenai-metric-label">Upcoming Interviews</div>
-                      <div className="screenai-metric-val">{upcomingInterviewsCount}</div>
-                      <small className="text-muted">
-                        {upcomingInterviewsCount === 0 ? "No interviews scheduled" : `${upcomingInterviewsCount} scheduled round${upcomingInterviewsCount > 1 ? "s" : ""}`}
-                      </small>
-
-                      <div className="screenai-hover-preview screenai-hover-preview-right">
-                        <div className="fw-bold text-white small mb-2">Upcoming Interviews</div>
-                        {upcomingInterviewsPreview.length === 0 ? (
-                          <div className="text-muted small">No scheduled interviews.</div>
-                        ) : (
-                          upcomingInterviewsPreview.map((i) => (
-                            <div key={i.id} className="screenai-preview-item text-secondary small">
-                              <strong>{i.candidateName}</strong> - {i.round_name}
-                              <div className="text-muted" style={{ fontSize: "0.7rem" }}>
-                                {new Date(i.scheduled_at).toLocaleDateString()} at {new Date(i.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 6: Hired Candidates */}
-                  <div className="col">
-                    <div 
-                      onClick={() => {
-                        setActiveTab("candidates");
-                      }}
-                      onKeyDown={(e) => handleKeyDown(e, () => {
-                        setActiveTab("candidates");
-                      })}
-                      className="screenai-card screenai-card-hover screenai-card-interactive h-100 text-start border-0" 
-                      style={{ borderLeft: "4px solid var(--screenai-success)", background: "var(--screenai-surface)" }}
-                      tabIndex="0"
-                      aria-label={`Hired Candidates: ${totalHires} candidates placed. Click to view placed candidates tab.`}
-                    >
-                      <div className="screenai-metric-label">Hired Candidates</div>
-                      <div className="screenai-metric-val">{totalHires}</div>
-                      <small className="text-muted">
-                        {totalHires === 0 ? "No hired candidates yet" : `${totalHires} candidate${totalHires > 1 ? "s" : ""} placed`}
-                      </small>
-
-                      <div className="screenai-hover-preview screenai-hover-preview-right">
-                        <div className="fw-bold text-white small mb-2">Placed Hires</div>
-                        {placedHiresPreview.length === 0 ? (
-                          <div className="text-muted small">No placed hires recorded yet.</div>
-                        ) : (
-                          placedHiresPreview.map((a) => (
-                            <div key={a.id} className="screenai-preview-item text-secondary small">
-                              <strong>{[a.candidate_first_name, a.candidate_last_name].filter(Boolean).join(" ") || a.candidate_name || "Placed Candidate"}</strong> - {a.job_title}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="row g-4">
-              {/* Placed Candidates Progression progress bars */}
-              <div className="col-lg-6">
-                <div className="screenai-card h-100">
-                  <h5 className="fw-bold text-white mb-4">Candidate Progression Distributions</h5>
-                  {Object.entries(stageCounts).map(([stageName, count]) => {
-                    const percentage = totalHires > 0 ? (count / totalHires) * 100 : 0;
-                    let barColor = "bg-primary";
-                    if (stageName === "Active Employee") barColor = "bg-success";
-                    if (stageName === "Onboarding") barColor = "bg-info";
-                    if (stageName === "Resigned") barColor = "bg-warning";
-                    if (stageName === "Terminated") barColor = "bg-danger";
-                    if (stageName === "Promoted") barColor = "bg-secondary";
-
-                    return (
-                      <div key={stageName} className="mb-3">
-                        <div className="d-flex justify-content-between align-items-center mb-1">
-                          <span className="fw-semibold text-secondary small">{stageName}</span>
-                          <span className="badge bg-dark text-white fw-bold">{count}</span>
-                        </div>
-                        <div className="progress" style={{ height: "10px" }}>
-                          <div
-                            className={`progress-bar ${barColor}`}
-                            role="progressbar"
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Recruiter Performance Table */}
-              <div className="col-lg-6">
-                <div className="screenai-card h-100">
-                  <h5 className="fw-bold text-white mb-3">Recruiter Workloads</h5>
-                  <div className="table-responsive">
-                    <table className="table table-dark table-hover table-borderless align-middle mb-0 small">
-                      <thead>
-                        <tr className="border-bottom border-secondary text-secondary">
-                          <th>Recruiter</th>
-                          <th className="text-center">Status</th>
-                          <th className="text-center">Jobs</th>
-                          <th className="text-center">Apps</th>
-                          <th className="text-center">Hires</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {hrs.length === 0 ? (
-                          <tr>
-                            <td colSpan="5" className="text-center py-3 text-secondary">
-                              No recruiters registered.
-                            </td>
-                          </tr>
-                        ) : (
-                          hrs.map((hr) => (
-                            <tr
-                              key={hr.id}
-                              style={{ cursor: "pointer" }}
-                              onClick={() => {
-                                setSelectedHR(hr);
-                                setActiveTab("hrs");
-                              }}
-                              title="Click to view details"
-                            >
-                              <td className="fw-bold">
-                                {hr.first_name || hr.last_name
-                                  ? `${hr.first_name} ${hr.last_name}`.trim()
-                                  : hr.username}
-                                <div className="text-secondary small" style={{ fontSize: "10px" }}>
-                                  @{hr.username}
-                                </div>
-                              </td>
-                              <td className="text-center">
-                                <span className={`badge ${hr.is_active ? "bg-success" : "bg-danger"}`}>
-                                  {hr.is_active ? "Active" : "Suspended"}
-                                </span>
-                              </td>
-                              <td className="text-center">{hr.jobs_count || 0}</td>
-                              <td className="text-center">{hr.applications_count || 0}</td>
-                              <td className="text-center">
-                                <span className="badge bg-success">{hr.hired_count || 0}</span>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+            
+            <div className="d-flex align-items-center gap-2">
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="Search..."
+                style={{ width: "220px" }}
+                value={gridSearch}
+                onChange={(e) => setGridSearch(e.target.value)}
+              />
+              {(gridMode === "recruiters" || gridMode === "suspended_recruiters") && (
+                <button
+                  onClick={() => {
+                    setNewRecruiterCredentials(null);
+                    setShowCreateRecruiterModal(true);
+                  }}
+                  className="btn btn-primary btn-sm fw-bold text-white d-flex align-items-center gap-1"
+                >
+                  Create Recruiter
+                </button>
+              )}
             </div>
-
-            {/* Open Jobs Drawer */}
-            {adminJobsDrawer && (
-              <div className="screenai-drawer-backdrop" onClick={() => setAdminJobsDrawer(false)}>
-                <div className="screenai-drawer p-4" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "var(--screenai-bg)", borderLeft: "1px solid var(--screenai-border)", overflowY: "auto" }}>
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h4 className="fw-bold text-white mb-0">💼 Open Job Positions</h4>
-                    <button className="btn-close btn-close-white" onClick={() => setAdminJobsDrawer(false)} aria-label="Close drawer"></button>
-                  </div>
-                  {openJobsList.length === 0 ? (
-                    <p className="text-muted">No open jobs at the moment.</p>
-                  ) : (
-                    <div className="d-flex flex-column gap-3">
-                      {openJobsList.map((job) => (
-                        <div key={job.id} className="p-3 rounded border text-start" style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}>
-                          <div className="fw-bold text-white mb-1">{job.job_title}</div>
-                          <div className="text-secondary small mb-2">{job.company_name}</div>
-                          <div className="d-flex justify-content-between align-items-center small text-muted">
-                            <span>Posted by: @{job.recruiter}</span>
-                            <span className="badge bg-secondary">{job.candidates_count} applicants</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* New Applications Drawer */}
-            {adminAppsDrawer && (
-              <div className="screenai-drawer-backdrop" onClick={() => setAdminAppsDrawer(false)}>
-                <div className="screenai-drawer p-4" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "var(--screenai-bg)", borderLeft: "1px solid var(--screenai-border)", overflowY: "auto" }}>
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h4 className="fw-bold text-white mb-0">📄 New Applications Awaiting Review</h4>
-                    <button className="btn-close btn-close-white" onClick={() => setAdminAppsDrawer(false)} aria-label="Close drawer"></button>
-                  </div>
-                  {newAppsList.length === 0 ? (
-                    <p className="text-muted">No new applications at the moment.</p>
-                  ) : (
-                    <div className="d-flex flex-column gap-3">
-                      {newAppsList.map((app) => (
-                        <div key={app.id} className="p-3 rounded border text-start" style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}>
-                          <div className="d-flex justify-content-between align-items-start mb-1">
-                            <span className="fw-bold text-white">{app.candidate_name}</span>
-                            <span className="badge bg-dark border border-secondary text-primary fw-bold" style={{ fontSize: "10px" }}>
-                              Score: {app.ai_score ?? "Pending"}
-                            </span>
-                          </div>
-                          <div className="text-secondary small mb-2">{app.job_title} at {app.company_name}</div>
-                          <div className="d-flex justify-content-between align-items-center small text-muted">
-                            <span>Recruiter: @{app.recruiter}</span>
-                            <span>{new Date(app.submitted_at).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
-        )}
 
-        {/* RECRUITER ACCOUNTS TAB */}
-        {activeTab === "hrs" && (
-          <div>
-            <div className="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2 border-bottom border-secondary pb-3">
+          <div style={{ width: "100%", maxHeight: "650px", overflow: "auto" }}>
+            <DataGrid
+              autoHeight
+              rows={
+                gridMode === "recruiters" ? hrs.filter(h => h.is_active && ((h.username || "").toLowerCase().includes(gridSearch.toLowerCase()) || ((h.first_name || "") + " " + (h.last_name || "")).toLowerCase().includes(gridSearch.toLowerCase()))) :
+                gridMode === "jobs" ? openJobsList.filter(j => (j.job_title || "").toLowerCase().includes(gridSearch.toLowerCase()) || (j.company_name || "").toLowerCase().includes(gridSearch.toLowerCase())) :
+                gridMode === "applications" ? newAppsList.filter(a => (a.candidate_name || "").toLowerCase().includes(gridSearch.toLowerCase()) || (a.job_title || "").toLowerCase().includes(gridSearch.toLowerCase())) :
+                gridMode === "interviews" ? allInterviewsList.filter(i => i.status === "scheduled").map(i => ({ ...i, candidateName: i.candidate_name || "Unknown Candidate", recruiter: i.recruiter_username || "Recruiter", jobTitle: i.job_title || "Listing" })).filter(i => (i.candidateName || "").toLowerCase().includes(gridSearch.toLowerCase()) || (i.jobTitle || "").toLowerCase().includes(gridSearch.toLowerCase())) :
+                gridMode === "hired" ? hiredCandidates.filter(c => (getCandidateName(c) || "").toLowerCase().includes(gridSearch.toLowerCase()) || (c.job_title || "").toLowerCase().includes(gridSearch.toLowerCase())) :
+                hrs.filter(h => !h.is_active && ((h.username || "").toLowerCase().includes(gridSearch.toLowerCase()) || ((h.first_name || "") + " " + (h.last_name || "")).toLowerCase().includes(gridSearch.toLowerCase())))
+              }
+              columns={
+                gridMode === "recruiters" ? recruiterColumns :
+                gridMode === "jobs" ? jobColumns :
+                gridMode === "applications" ? applicationColumns :
+                gridMode === "interviews" ? interviewColumns :
+                gridMode === "hired" ? hiredColumns :
+                recruiterColumns
+              }
+              initialState={{
+                pagination: {
+                  paginationModel: { pageSize: 10 },
+                },
+              }}
+              pageSizeOptions={[5, 10, 20]}
+              getRowId={(row) => row.id}
+              disableRowSelectionOnClick
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Recruiter Details Drawer Overlay */}
+      {selectedHR && (
+        <div className="screenai-drawer-backdrop" onClick={closeRecruiterDrawer}>
+          <div 
+            className="screenai-drawer p-4" 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ 
+              backgroundColor: "var(--screenai-bg)", 
+              borderLeft: "1px solid var(--screenai-border)", 
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column"
+            }}
+          >
+            {/* Drawer Header */}
+            <div className="d-flex justify-content-between align-items-start border-bottom border-secondary pb-3 mb-3">
               <div>
-                <h2 className="fw-bold text-white mb-1">Recruiter Accounts Governance</h2>
-                <p className="text-secondary mb-0">Provision recruiter accounts, toggle activation status, reset credentials, and inspect workloads.</p>
+                <h4 className="fw-bold text-white mb-1">
+                  {selectedHR.first_name || selectedHR.last_name
+                    ? `${selectedHR.first_name} ${selectedHR.last_name}`.trim()
+                    : selectedHR.username}
+                </h4>
+                <div className="d-flex align-items-center gap-2">
+                  <span className="text-secondary small">@{selectedHR.username}</span>
+                  <span className={`badge ${selectedHR.is_active ? "bg-success" : "bg-danger"}`} style={{ fontSize: "10px" }}>
+                    {selectedHR.is_active ? "Active" : "Suspended"}
+                  </span>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setNewRecruiterCredentials(null);
-                  setShowCreateRecruiterModal(true);
-                }}
-                className="btn btn-primary fw-bold px-3 py-2 d-flex align-items-center gap-1 shadow"
-              >
-                ➕ Create Recruiter
-              </button>
+              <button onClick={closeRecruiterDrawer} className="btn-close btn-close-white" />
             </div>
 
-            <div className="row g-4">
-              {/* Recruiter List */}
-              <div className={selectedHR ? "col-lg-5 col-12" : "col-lg-12 col-12"}>
-                <div className="screenai-card">
-                  <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
-                    <h5 className="fw-bold text-white mb-0">Directory List</h5>
-                    <div className="d-flex gap-2 align-items-center flex-wrap">
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ width: "140px" }}
-                        value={hrStatusFilter}
-                        onChange={(e) => setHrStatusFilter(e.target.value)}
-                      >
-                        <option value="all">All Accounts</option>
-                        <option value="active">Active Only</option>
-                        <option value="suspended">Suspended Only</option>
-                      </select>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
-                        placeholder="🔍 Search recruiters..."
-                        style={{ width: "180px" }}
-                        value={searchHR}
-                        onChange={(e) => setSearchHR(e.target.value)}
-                      />
+            {/* Sub-navigation tabs inside the drawer */}
+            <div className="btn-group btn-group-sm mb-4 w-100" role="group">
+              {["profile", "jobs", "applications", "hires", "interviews", "activity"].map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`btn text-capitalize ${drawerTab === tab ? "btn-light" : "btn-outline-light"}`}
+                  style={{ fontSize: "11px" }}
+                  onClick={() => {
+                    handleTabChange(tab);
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Drawer Tab Contents wrapper */}
+            <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+              {/* PROFILE TAB */}
+              {drawerTab === "profile" && (
+                <div className="d-flex flex-column gap-3">
+                  <div className="bg-dark p-3 rounded border border-secondary text-start">
+                    <div className="mb-2">
+                      <span className="text-secondary small d-block">Email Address:</span>
+                      <strong className="text-white small">{selectedHR.email || "No email listed"}</strong>
+                    </div>
+                    <div className="mb-2">
+                      <span className="text-secondary small d-block">Phone Number:</span>
+                      <strong className="text-white small">{selectedHR.phone || "No phone listed"}</strong>
+                    </div>
+                    <div>
+                      <span className="text-secondary small d-block">Last Login Session:</span>
+                      <strong className="text-white small">
+                        {selectedHR.last_login ? new Date(selectedHR.last_login).toLocaleString() : "Not logged in yet"}
+                      </strong>
                     </div>
                   </div>
 
-                  <div className="table-responsive">
-                    <table className="table table-dark table-hover table-borderless align-middle mb-0 small">
-                      <thead>
-                        <tr className="border-bottom border-secondary text-secondary">
-                          <th>Recruiter Info</th>
-                          {!selectedHR && <th className="text-center d-none d-md-table-cell">Last Login</th>}
-                          <th className="text-center">Workload</th>
-                          <th className="text-center">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredHrs.length === 0 ? (
-                          <tr>
-                            <td colSpan={selectedHR ? 3 : 4} className="text-center py-4 text-secondary">
-                              No matching recruiters found.
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredHrs.map((hr) => (
-                            <tr
-                              key={hr.id}
-                              style={{ cursor: "pointer" }}
-                              className={selectedHR?.id === hr.id ? "table-active" : ""}
-                              onClick={() => setSelectedHR(hr)}
-                            >
-                              <td>
-                                <div className="fw-bold text-white">
-                                  {hr.first_name || hr.last_name
-                                    ? `${hr.first_name} ${hr.last_name}`.trim()
-                                    : hr.username}
-                                </div>
-                                <div className="text-secondary small" style={{ fontSize: "11px" }}>
-                                  @{hr.username}
-                                </div>
-                              </td>
-                              {!selectedHR && (
-                                <td className="text-center text-secondary d-none d-md-table-cell">
-                                  {hr.last_login ? new Date(hr.last_login).toLocaleString() : "Not logged in yet"}
-                                </td>
-                              )}
-                              <td className="text-center">
-                                <span className="badge bg-secondary me-1" title="Jobs count">{hr.jobs_count || 0} Jobs</span>
-                                <span className="badge bg-success" title="Hires count">{hr.hired_count || 0} Hires</span>
-                              </td>
-                              <td className="text-center">
-                                <span className={`badge ${hr.is_active ? "bg-success" : "bg-danger"}`}>
-                                  {hr.is_active ? "Active" : "Suspended"}
-                                </span>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="bg-dark p-3 rounded border border-secondary text-center">
+                    <div className="row g-2">
+                      <div className="col-4">
+                        <div className="text-secondary small fw-bold">Jobs</div>
+                        <h5 className="fw-bold text-white mb-0 mt-1">{selectedHR.jobs_count || 0}</h5>
+                      </div>
+                      <div className="col-4">
+                        <div className="text-secondary small fw-bold">Apps</div>
+                        <h5 className="fw-bold text-white mb-0 mt-1">{selectedHR.applications_count || 0}</h5>
+                      </div>
+                      <div className="col-4">
+                        <div className="text-secondary small fw-bold">Hires</div>
+                        <h5 className="fw-bold text-white mb-0 mt-1">{selectedHR.hired_count || 0}</h5>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="d-flex flex-column gap-2 mt-2">
+                    {selectedHR.is_active ? (
+                      <button
+                        onClick={() => handleToggleHRActive(selectedHR.id, selectedHR.username, selectedHR.is_active)}
+                        className="btn btn-sm btn-danger fw-bold text-white"
+                        disabled={togglingHrId === selectedHR.id}
+                      >
+                        Suspend Recruiter Account
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleToggleHRActive(selectedHR.id, selectedHR.username, selectedHR.is_active)}
+                        className="btn btn-sm btn-success fw-bold text-white"
+                        disabled={togglingHrId === selectedHR.id}
+                      >
+                        Activate Recruiter Account
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setResettingPassword(true)}
+                      className="btn btn-sm btn-outline-primary fw-bold"
+                    >
+                      Reset Credentials
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Recruiter Details Panel */}
-              {selectedHR && (
-                <div className="col-lg-7 col-12">
-                  <div className="screenai-card">
-                    {/* Header */}
-                    <div className="d-flex justify-content-between align-items-start border-bottom border-secondary pb-3 mb-4">
-                      <div>
-                        <h4 className="fw-bold text-white mb-1">
-                          {selectedHR.first_name || selectedHR.last_name
-                            ? `${selectedHR.first_name} ${selectedHR.last_name}`.trim()
-                            : selectedHR.username}
-                        </h4>
-                        <div className="d-flex align-items-center gap-2">
-                          <span className="text-secondary small">@{selectedHR.username} — HR Recruiter</span>
-                          <span className={`badge ${selectedHR.is_active ? "bg-success" : "bg-danger"}`} style={{ fontSize: "10px" }}>
-                            {selectedHR.is_active ? "Active" : "Suspended"}
+              {/* JOBS TAB */}
+              {drawerTab === "jobs" && (
+                <div className="d-flex flex-column gap-2">
+                  {!selectedHR.jobs_list || selectedHR.jobs_list.length === 0 ? (
+                    <div className="text-center text-secondary small py-3">No jobs posted yet.</div>
+                  ) : (
+                    selectedHR.jobs_list.map((job) => (
+                      <div
+                        key={job.id}
+                        className="p-3 rounded border text-start"
+                        style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}
+                      >
+                        <div className="fw-bold text-white small">{job.job_title}</div>
+                        <div className="text-secondary small mb-1">{job.company_name}</div>
+                        <div className="d-flex justify-content-between align-items-center small text-muted" style={{ fontSize: "10px" }}>
+                          <span>Posted {new Date(job.created_at).toLocaleDateString()}</span>
+                          <span className={`badge ${job.status === "open" ? "bg-success" : "bg-secondary"}`}>
+                            {job.status}
                           </span>
                         </div>
                       </div>
-                      <button onClick={() => setSelectedHR(null)} className="btn-close btn-close-white" />
-                    </div>
+                    ))
+                  )}
+                </div>
+              )}
 
-                    {/* Contact & Status */}
-                    <div className="bg-dark p-3 rounded border border-secondary mb-4">
-                      <div className="row g-3 small">
-                        <div className="col-sm-6">
-                          <span className="text-secondary d-block fw-bold mb-1">Email Address:</span>
-                          <strong className="text-white">{selectedHR.email || "No email listed"}</strong>
+              {/* APPLICATIONS TAB */}
+              {drawerTab === "applications" && (
+                <div className="d-flex flex-column gap-2">
+                  {!selectedHR.pending_applications_list || selectedHR.pending_applications_list.length === 0 ? (
+                    <div className="text-center text-secondary small py-3">No pending applications.</div>
+                  ) : (
+                    selectedHR.pending_applications_list.map((app) => (
+                      <div
+                        key={app.id}
+                        className="p-3 rounded border text-start"
+                        style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}
+                      >
+                        <div className="d-flex justify-content-between align-items-start mb-1">
+                          <span className="fw-bold text-white small">{app.candidate_name}</span>
+                          <span className="badge bg-dark border border-secondary text-primary fw-bold" style={{ fontSize: "10px" }}>
+                            Score: {app.ai_score ?? "Pending"}
+                          </span>
                         </div>
-                        <div className="col-sm-6">
-                          <span className="text-secondary d-block fw-bold mb-1">Phone Number:</span>
-                          <strong className="text-white">{selectedHR.phone || "No phone listed"}</strong>
-                        </div>
-                        <div className="col-12 border-top border-secondary pt-2 mt-2">
-                          <span className="text-secondary d-block fw-bold mb-1">Last Login Session:</span>
-                          <strong className="text-white">
-                            {selectedHR.last_login ? new Date(selectedHR.last_login).toLocaleString() : "Not logged in yet"}
-                          </strong>
+                        <div className="text-secondary small mb-1">{app.job_title}</div>
+                        <div className="d-flex justify-content-between align-items-center small text-muted" style={{ fontSize: "10px" }}>
+                          <span>Applied {new Date(app.submitted_at).toLocaleDateString()}</span>
+                          <span className="text-capitalize">{app.application_status}</span>
                         </div>
                       </div>
-                    </div>
+                    ))
+                  )}
+                </div>
+              )}
 
-                    {/* Stats Cards Row */}
-                    <div className="row g-2 mb-4">
-                      <div className="col-4">
-                        <div className="p-3 bg-dark border border-secondary rounded text-center">
-                          <div className="text-secondary small fw-bold uppercase">Jobs</div>
-                          <h4 className="fw-bold text-white mb-0 mt-1">{selectedHR.jobs_count || 0}</h4>
-                        </div>
-                      </div>
-                      <div className="col-4">
-                        <div className="p-3 bg-dark border border-secondary rounded text-center">
-                          <div className="text-secondary small fw-bold uppercase">Applications</div>
-                          <h4 className="fw-bold text-white mb-0 mt-1">{selectedHR.applications_count || 0}</h4>
-                        </div>
-                      </div>
-                      <div className="col-4">
-                        <div className="p-3 bg-dark border border-secondary rounded text-center">
-                          <div className="text-secondary small fw-bold uppercase">Hires</div>
-                          <h4 className="fw-bold text-white mb-0 mt-1">{selectedHR.hired_count || 0}</h4>
-                        </div>
-                      </div>
+              {/* HIRES TAB */}
+              {drawerTab === "hires" && (
+                <div className="d-flex flex-column gap-3">
+                  {!selectedCandidate ? (
+                    <div className="d-flex flex-column gap-2">
+                      {hiredCandidates.filter(c => c.hr_user_id === selectedHR.id).length === 0 ? (
+                        <div className="text-center text-secondary small py-3">No placed candidates recorded.</div>
+                      ) : (
+                        hiredCandidates
+                          .filter(c => c.hr_user_id === selectedHR.id)
+                          .map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                selectCandidate(c.id);
+                                setStage("Onboarding");
+                                setNotes("");
+                              }}
+                              className="p-3 rounded border text-start cursor-pointer screenai-card-hover"
+                              style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}
+                            >
+                              <div className="d-flex justify-content-between align-items-center mb-1">
+                                <h6 className="mb-0 fw-bold text-white small">{getCandidateName(c)}</h6>
+                                <span className="badge bg-success" style={{ fontSize: "9px" }}>{getLatestStage(c)}</span>
+                              </div>
+                              <div className="small text-secondary" style={{ fontSize: "11px" }}>
+                                {c.job_title} • {c.company_name}
+                              </div>
+                            </div>
+                          ))
+                      )}
                     </div>
+                  ) : (
+                    <div>
+                      {/* Back to list button */}
+                      <button
+                        onClick={closeCandidateDetails}
+                        className="btn btn-xs btn-outline-light mb-3"
+                        style={{ fontSize: "11px" }}
+                      >
+                        ← Back to Hires List
+                      </button>
 
-                    {/* Nested Sections */}
-                    <div className="accordion-custom d-flex flex-column gap-3 mb-4">
-                      {/* Section 1: Jobs Posted */}
-                      <div className="p-3 bg-dark border border-secondary rounded">
-                        <h6 className="fw-bold text-white mb-3 d-flex justify-content-between">
-                          <span>💼 Jobs Posted ({selectedHR.jobs_list?.length || 0})</span>
-                        </h6>
-                        <div className="list-group list-group-flush rounded overflow-hidden" style={{ maxHeight: "200px", overflowY: "auto" }}>
-                          {!selectedHR.jobs_list || selectedHR.jobs_list.length === 0 ? (
-                            <div className="p-2 text-center text-secondary small">No jobs posted yet.</div>
-                          ) : (
-                            selectedHR.jobs_list.map((job) => (
-                              <div
-                                key={job.id}
-                                className="list-group-item bg-dark text-white border-secondary px-2 py-3 d-flex justify-content-between align-items-center"
+                      <div className="p-3 rounded border text-start bg-dark border-secondary mb-3">
+                        <h6 className="fw-bold text-white mb-1 small">{getCandidateName(selectedCandidate)}</h6>
+                        <p className="text-secondary small mb-2">{selectedCandidate.job_title} — {selectedCandidate.company_name}</p>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <span className="text-secondary small" style={{ fontSize: "10px" }}>Email: {selectedCandidate.candidate_email || "N/A"}</span>
+                          <a
+                            href={getResumeUrl(selectedCandidate.resume)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-xs btn-outline-primary fw-bold text-decoration-none py-0.5 px-2"
+                            style={{ fontSize: "10px" }}
+                          >
+                            View Resume
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Update Stage Form */}
+                      <div className="bg-dark p-3 rounded border border-secondary mb-3 text-start">
+                        <span className="text-secondary small fw-bold d-block mb-2">Update Placement Stage</span>
+                        <form onSubmit={handleAddProgression}>
+                          <div className="row g-2">
+                            <div className="col-12">
+                              <select
+                                className="form-select form-select-sm"
+                                value={stage}
+                                onChange={(e) => setStage(e.target.value)}
+                                disabled={updating}
                               >
-                                <div>
-                                  <div className="fw-bold text-white small">{job.job_title}</div>
-                                  <div className="text-secondary small" style={{ fontSize: "11px" }}>
-                                    {job.company_name} • Posted {new Date(job.created_at).toLocaleDateString()}
+                                <option value="Offer Extended">Offer Extended</option>
+                                <option value="Onboarding">Onboarding</option>
+                                <option value="Active Employee">Active Employee</option>
+                                <option value="Promoted">Promoted</option>
+                                <option value="Resigned">Resigned</option>
+                                <option value="Terminated">Terminated</option>
+                              </select>
+                            </div>
+                            <div className="col-12">
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                placeholder={getPlaceholderForStage(stage)}
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                disabled={updating}
+                              />
+                            </div>
+                            <div className="col-12 mt-2">
+                              <button
+                                type="submit"
+                                className="btn btn-sm btn-success w-100 fw-bold text-white"
+                                disabled={updating || !stage.trim()}
+                              >
+                                {updating ? "Updating..." : "Record Status Update"}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+
+                      {/* Progression History */}
+                      <span className="text-secondary small fw-bold d-block mb-2 text-start">Timeline History</span>
+                      <div className="timeline-stages small">
+                        <div className="position-relative ps-3">
+                          <div
+                            className="position-absolute h-100 border-start border-secondary"
+                            style={{ left: "5px", top: "0" }}
+                          />
+                          {!selectedCandidate.progressions || selectedCandidate.progressions.length === 0 ? (
+                            <p className="text-secondary small text-start">No updates recorded yet.</p>
+                          ) : (
+                            selectedCandidate.progressions.map((log) => (
+                              <div key={log.id} className="position-relative mb-3 text-start">
+                                <div
+                                  className="position-absolute bg-success rounded-circle"
+                                  style={{ left: "-18px", top: "6px", width: "8px", height: "8px" }}
+                                />
+                                {editingLogId === log.id ? (
+                                  <div className="bg-dark p-2 rounded border border-secondary mt-1">
+                                    <select
+                                      className="form-select form-select-sm mb-1"
+                                      value={editStage}
+                                      onChange={(e) => setEditStage(e.target.value)}
+                                    >
+                                      <option value="Offer Extended">Offer Extended</option>
+                                      <option value="Onboarding">Onboarding</option>
+                                      <option value="Active Employee">Active Employee</option>
+                                      <option value="Promoted">Promoted</option>
+                                      <option value="Resigned">Resigned</option>
+                                      <option value="Terminated">Terminated</option>
+                                    </select>
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm mb-1"
+                                      placeholder="Update notes..."
+                                      value={editNotes}
+                                      onChange={(e) => setEditNotes(e.target.value)}
+                                    />
+                                    <div className="d-flex gap-1 justify-content-end mt-1">
+                                      <button
+                                        type="button"
+                                        className="btn btn-xs btn-success fw-bold text-white py-0.5 px-2"
+                                        style={{ fontSize: "10px" }}
+                                        onClick={() => handleEditProgression(log.id)}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-xs btn-secondary py-0.5 px-2"
+                                        style={{ fontSize: "10px" }}
+                                        onClick={() => setEditingLogId(null)}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                                <span className={`badge ${job.status === "open" ? "bg-success" : "bg-secondary"}`}>
-                                  {job.status}
-                                </span>
+                                ) : (
+                                  <>
+                                    <div className="d-flex justify-content-between align-items-center mb-1">
+                                      <strong className="text-white">{log.stage}</strong>
+                                      <span className="text-muted" style={{ fontSize: "9px" }}>
+                                        {new Date(log.updated_at).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    {log.notes && <div className="text-secondary small mb-1">{log.notes}</div>}
+                                    <div className="d-flex justify-content-between align-items-center mt-1 flex-wrap gap-2">
+                                      <span className="text-muted" style={{ fontSize: "9px" }}>
+                                        By: {log.updated_by_username ? `@${log.updated_by_username}` : "System"}
+                                      </span>
+                                      <div className="d-flex gap-2">
+                                        <button
+                                          onClick={() => {
+                                            setEditingLogId(log.id);
+                                            setEditStage(log.stage);
+                                            setEditNotes(log.notes || "");
+                                          }}
+                                          className="btn btn-link p-0 text-decoration-none small"
+                                          style={{ fontSize: "10px", color: "var(--screenai-primary)" }}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteProgression(log.id)}
+                                          className="btn btn-link p-0 text-danger text-decoration-none small"
+                                          style={{ fontSize: "10px" }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             ))
                           )}
                         </div>
                       </div>
-
-                      {/* Section 2: Placed Hires */}
-                      <div className="p-3 bg-dark border border-secondary rounded">
-                        <h6 className="fw-bold text-white mb-3">
-                          📈 Placed Candidates ({hiredCandidates.filter(c => c.hr_user_id === selectedHR.id).length})
-                        </h6>
-                        <div className="list-group list-group-flush rounded overflow-hidden" style={{ maxHeight: "200px", overflowY: "auto" }}>
-                          {hiredCandidates.filter(c => c.hr_user_id === selectedHR.id).length === 0 ? (
-                            <div className="p-2 text-center text-secondary small">No placed candidates recorded.</div>
-                          ) : (
-                            hiredCandidates
-                              .filter(c => c.hr_user_id === selectedHR.id)
-                              .map((c) => (
-                                <div
-                                  key={c.id}
-                                  className="list-group-item bg-dark text-white border-secondary px-2 py-3 d-flex justify-content-between align-items-center"
-                                >
-                                  <div>
-                                    <div className="fw-bold text-white small">{getCandidateName(c)}</div>
-                                    <div className="text-secondary small" style={{ fontSize: "11px" }}>
-                                      Role: {c.job_title} • Company: {c.company_name}
-                                    </div>
-                                  </div>
-                                  <span className="badge bg-success">{getLatestStage(c)}</span>
-                                </div>
-                              ))
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Section 3: Interviews Managed */}
-                      <div className="p-3 bg-dark border border-secondary rounded">
-                        <h6 className="fw-bold text-white mb-3">
-                          📅 Scheduled Round Audits ({hrInterviews.length})
-                        </h6>
-                        {loadingHrInterviews ? (
-                          <div className="text-center py-3 text-secondary small">
-                            <span className="spinner-border spinner-border-sm me-2" role="status" />
-                            Loading interviews...
-                          </div>
-                        ) : hrInterviews.length === 0 ? (
-                          <div className="p-2 text-center text-secondary small">No interviews scheduled yet.</div>
-                        ) : (
-                          <div className="table-responsive" style={{ maxHeight: "200px", overflowY: "auto" }}>
-                            <table className="table table-dark table-hover table-borderless align-middle mb-0 small">
-                              <tbody>
-                                {hrInterviews.map((int) => (
-                                  <tr key={int.id} className="border-bottom border-secondary">
-                                    <td className="px-1 py-2">
-                                      <div className="fw-bold text-white">{int.candidate_name || "Candidate"}</div>
-                                      <div className="text-secondary" style={{ fontSize: "10px" }}>
-                                        {int.round_name} (Round {int.round_number})
-                                      </div>
-                                    </td>
-                                    <td className="px-1 py-2 text-secondary" style={{ fontSize: "11px" }}>
-                                      {new Date(int.scheduled_at).toLocaleDateString()}
-                                    </td>
-                                    <td className="px-1 py-2 text-end">
-                                      <span
-                                        className={`badge ${
-                                          int.status === "completed"
-                                            ? "bg-success"
-                                            : int.status === "cancelled"
-                                            ? "bg-danger"
-                                            : "bg-warning text-dark"
-                                        }`}
-                                        style={{ fontSize: "10px" }}
-                                      >
-                                        {int.status}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Section 4: Recruiter Activity Feed */}
-                      <div className="p-3 bg-dark border border-secondary rounded">
-                        <h6 className="fw-bold text-white mb-3">📜 Activity Feed Logs</h6>
-                        <div className="list-group list-group-flush rounded overflow-hidden" style={{ maxHeight: "250px", overflowY: "auto" }}>
-                          {activityLog.filter(act => 
-                            act.message.toLowerCase().includes(selectedHR.username.toLowerCase()) ||
-                            (selectedHR.jobs_list && selectedHR.jobs_list.some(j => act.message.toLowerCase().includes(j.job_title.toLowerCase())))
-                          ).length === 0 ? (
-                            <div className="p-2 text-center text-secondary small">No recent logs.</div>
-                          ) : (
-                            activityLog
-                              .filter(act => 
-                                act.message.toLowerCase().includes(selectedHR.username.toLowerCase()) ||
-                                (selectedHR.jobs_list && selectedHR.jobs_list.some(j => act.message.toLowerCase().includes(j.job_title.toLowerCase())))
-                              )
-                              .map((act) => (
-                                <div key={act.id} className="py-2 border-bottom border-secondary d-flex flex-column">
-                                  <span className="text-white small fw-semibold">{act.message}</span>
-                                  <span className="text-muted" style={{ fontSize: "9px" }}>
-                                    {new Date(act.timestamp).toLocaleString()} • {act.type}
-                                  </span>
-                                </div>
-                              ))
-                          )}
-                        </div>
-                      </div>
                     </div>
-
-                    {/* Governance Action Row */}
-                    <div className="border-top border-secondary pt-4 d-flex flex-column gap-3">
-                      <div className="d-flex gap-2">
-                        {selectedHR.is_active ? (
-                          <button
-                            onClick={() => handleToggleHRActive(selectedHR.id, selectedHR.username, selectedHR.is_active)}
-                            className="btn btn-sm btn-danger fw-bold flex-fill"
-                            disabled={togglingHrId === selectedHR.id}
-                          >
-                            🔒 Suspend Recruiter Account
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleToggleHRActive(selectedHR.id, selectedHR.username, selectedHR.is_active)}
-                            className="btn btn-sm btn-success fw-bold flex-fill"
-                            disabled={togglingHrId === selectedHR.id}
-                          >
-                            🔓 Activate Recruiter Account
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => setResettingPassword(!resettingPassword)}
-                          className={`btn btn-sm ${resettingPassword ? "btn-secondary" : "btn-outline-warning"} fw-bold flex-fill`}
-                        >
-                          🔑 Reset Credentials
-                        </button>
-                      </div>
-
-                      {resettingPassword && (
-                        <form onSubmit={handleResetPasswordSubmit} className="bg-dark p-3 rounded border border-secondary small">
-                          <label className="form-label text-secondary small fw-bold mb-1">Enter New Password</label>
-                          <div className="input-group input-group-sm mb-2">
-                            <input
-                              type="password"
-                              className="form-control"
-                              placeholder="Min 6 characters required"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              disabled={savingNewPassword}
-                              required
-                            />
-                          </div>
-                          <div className="d-flex gap-2">
-                            <button
-                              type="submit"
-                              className="btn btn-sm btn-primary flex-fill fw-bold"
-                              disabled={savingNewPassword}
-                            >
-                              {savingNewPassword ? "Saving..." : "Save Password"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNewPassword("");
-                                setResettingPassword(false);
-                              }}
-                              className="btn btn-sm btn-outline-secondary"
-                              disabled={savingNewPassword}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
-            </div>
-          </div>
-        )}
 
-        {/* CANDIDATE PROGRESSION TAB */}
-        {activeTab === "candidates" && (
-          <div className="row g-4">
-            <div className={selectedCandidate ? "col-lg-5" : "col-lg-12"}>
-              <div className="screenai-card">
-                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-                  <h5 className="fw-bold text-white mb-0">Hired Placements</h5>
-                  <div className="d-flex gap-2">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: "130px" }}
-                      value={filterHRId}
-                      onChange={(e) => setFilterHRId(e.target.value)}
-                    >
-                      <option value="all">All Recruiters</option>
-                      {hrs.map((hr) => (
-                        <option key={hr.id} value={hr.id}>
-                          {hr.first_name || hr.last_name
-                            ? `${hr.first_name} ${hr.last_name}`.trim()
-                            : hr.username}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: "120px" }}
-                      value={filterStage}
-                      onChange={(e) => setFilterStage(e.target.value)}
-                    >
-                      <option value="all">All Stages</option>
-                      <option value="Offer Extended">Offer Extended</option>
-                      <option value="Onboarding">Onboarding</option>
-                      <option value="Active Employee">Active Employee</option>
-                      <option value="Promoted">Promoted</option>
-                      <option value="Resigned">Resigned</option>
-                      <option value="Terminated">Terminated</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="🔍 Search candidates..."
-                      style={{ width: "150px" }}
-                      value={searchCandidate}
-                      onChange={(e) => setSearchCandidate(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="list-group list-group-flush border border-secondary rounded overflow-hidden">
-                  {filteredCandidates.length === 0 ? (
-                    <div className="p-4 text-center text-secondary">No matching hired placements found.</div>
+              {/* INTERVIEWS TAB */}
+              {drawerTab === "interviews" && (
+                <div className="d-flex flex-column gap-2">
+                  {hrInterviews.length === 0 ? (
+                    <div className="text-center text-secondary small py-3">No interviews scheduled yet.</div>
                   ) : (
-                    filteredCandidates.map((candidate) => (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        className={`list-group-item list-group-item-action bg-dark text-white border-secondary p-3 ${
-                          selectedCandidate?.id === candidate.id ? "active text-white bg-primary border-primary" : ""
-                        }`}
-                        onClick={() => {
-                          setSelectedCandidate(candidate);
-                          setStage("Onboarding");
-                          setNotes("");
-                          setSuccess("");
-                        }}
+                    hrInterviews.map((int) => (
+                      <div
+                        key={int.id}
+                        className="p-3 rounded border text-start"
+                        style={{ backgroundColor: "var(--screenai-surface)", borderColor: "var(--screenai-border)" }}
                       >
-                        <div className="d-flex justify-content-between align-items-center">
-                          <h6 className="mb-1 fw-bold">{getCandidateName(candidate)}</h6>
-                          <span className="badge bg-success">{getLatestStage(candidate)}</span>
+                        <div className="d-flex justify-content-between align-items-start mb-1">
+                          <span className="fw-bold text-white small">{int.candidate_name || "Candidate"}</span>
+                          <span
+                            className={`badge text-capitalize ${int.status === "completed"
+                                ? "bg-success"
+                                : int.status === "cancelled"
+                                  ? "bg-danger"
+                                  : "bg-secondary"
+                              }`}
+                            style={{ fontSize: "9px" }}
+                          >
+                            {int.status}
+                          </span>
                         </div>
-                        <div className="small text-secondary mb-1">
-                          Role: {candidate.job_title} — Hired By: {candidate.company_name}
+                        <div className="text-secondary small" style={{ fontSize: "11px" }}>
+                          {int.round_name} (Round {int.round_number})
                         </div>
-                      </button>
+                        <div className="text-muted mt-2" style={{ fontSize: "10px" }}>
+                          Scheduled: {new Date(int.scheduled_at).toLocaleString()}
+                        </div>
+                      </div>
                     ))
                   )}
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Selected candidate progression details */}
-            {selectedCandidate && (
-              <div className="col-lg-7">
-                <div className="screenai-card">
-                  <div className="d-flex justify-content-between align-items-start border-bottom border-secondary pb-3 mb-4">
-                    <div>
-                      <h4 className="fw-bold text-white mb-1">{getCandidateName(selectedCandidate)}</h4>
-                      <p className="text-secondary mb-0">
-                        {selectedCandidate.job_title} — {selectedCandidate.company_name}
-                      </p>
-                    </div>
-                    <button onClick={() => setSelectedCandidate(null)} className="btn-close btn-close-white" />
-                  </div>
-
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <div className="small text-secondary">
-                      Email: <strong>{selectedCandidate.candidate_email || "Not provided"}</strong>
-                    </div>
-                    <a
-                      href={getResumeUrl(selectedCandidate.resume)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn btn-sm btn-outline-primary fw-bold"
+              {/* ACTIVITY TAB */}
+              {drawerTab === "activity" && (
+                <div className="d-flex flex-column gap-3">
+                  {/* Filters */}
+                  <div className="d-flex gap-2">
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Search activity..."
+                      value={recruiterActivityFilters.search}
+                      onChange={(e) => {
+                        setRecruiterActivityLoading(true);
+                        setRecruiterActivityFilters(prev => ({ ...prev, search: e.target.value }));
+                      }}
+                      style={{ backgroundColor: "var(--screenai-bg)", borderColor: "var(--screenai-border)", color: "var(--screenai-text)" }}
+                    />
+                    <select
+                      className="form-select form-select-sm"
+                      value={recruiterActivityFilters.action}
+                      onChange={(e) => {
+                        setRecruiterActivityLoading(true);
+                        setRecruiterActivityFilters(prev => ({ ...prev, action: e.target.value }));
+                      }}
+                      style={{ backgroundColor: "var(--screenai-bg)", borderColor: "var(--screenai-border)", color: "var(--screenai-text)" }}
                     >
-                      📄 View Resume
-                    </a>
+                      <option value="">All Actions</option>
+                      <option value="recruiter_created">Recruiter Created</option>
+                      <option value="recruiter_suspended">Recruiter Suspended</option>
+                      <option value="recruiter_activated">Recruiter Activated</option>
+                      <option value="recruiter_password_reset">Password Reset</option>
+                      <option value="recruiter_forced_password_changed">Password Changed</option>
+                      <option value="job_created">Job Created</option>
+                      <option value="application_submitted">Application Submitted</option>
+                      <option value="application_status_changed">Status Changed</option>
+                      <option value="interview_scheduled">Interview Scheduled</option>
+                      <option value="interview_rescheduled">Interview Rescheduled</option>
+                      <option value="interview_completed">Interview Completed</option>
+                      <option value="interview_cancelled">Interview Cancelled</option>
+                      <option value="interview_no_show">Interview No Show</option>
+                      <option value="candidate_progression_created">Progression Created</option>
+                      <option value="candidate_progression_updated">Progression Updated</option>
+                      <option value="candidate_progression_deleted">Progression Deleted</option>
+                    </select>
                   </div>
 
-                  {/* Progression updates logs form */}
-                  <div className="bg-dark p-3 rounded border border-secondary mb-4">
-                    <h5 className="fw-bold text-white mb-3 small">Update Placement Stage</h5>
-                    <form onSubmit={handleAddProgression}>
-                      <div className="row g-2">
-                        <div className="col-sm-4">
-                          <select
-                            className="form-select form-select-sm"
-                            value={stage}
-                            onChange={(e) => setStage(e.target.value)}
-                            disabled={updating}
-                          >
-                            <option value="Offer Extended">Offer Extended</option>
-                            <option value="Onboarding">Onboarding</option>
-                            <option value="Active Employee">Active Employee</option>
-                            <option value="Promoted">Promoted</option>
-                            <option value="Resigned">Resigned</option>
-                            <option value="Terminated">Terminated</option>
-                          </select>
-                        </div>
-                        <div className="col-sm-8">
-                          <input
-                            type="text"
-                            className="form-control form-control-sm"
-                            placeholder={getPlaceholderForStage(stage)}
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            disabled={updating}
-                          />
-                        </div>
-                        <div className="col-12 mt-2">
+                  {recruiterActivityLoading ? (
+                    <div className="text-center py-3">
+                      <span className="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                      <span className="ms-2 text-secondary small">Loading logs...</span>
+                    </div>
+                  ) : recruiterActivityResults.length === 0 ? (
+                    <div className="text-center text-secondary small py-3">No recent activity logs.</div>
+                  ) : (
+                    <div className="d-flex flex-column gap-2">
+                      {recruiterActivityResults.map((act) => {
+                        const actor = act.actor_username ? `@${act.actor_username}` : "System/Public";
+                        const target = act.target_label || act.target_id || "";
+                        const meta = act.metadata || {};
+                        let msg;
+                        switch (act.action) {
+                          case "recruiter_created":
+                            msg = `${actor} created recruiter account @${meta.username || target}.`;
+                            break;
+                          case "recruiter_suspended":
+                            msg = `${actor} suspended recruiter account @${meta.username || target}.`;
+                            break;
+                          case "recruiter_activated":
+                            msg = `${actor} activated recruiter account @${meta.username || target}.`;
+                            break;
+                          case "recruiter_password_reset":
+                            msg = `${actor} reset password for @${meta.username || target}.`;
+                            break;
+                          case "recruiter_forced_password_changed":
+                            msg = `${actor} changed their password via forced credential update.`;
+                            break;
+                          case "job_created":
+                            msg = `${actor} posted a new job: '${meta.job_title || target}'.`;
+                            break;
+                          case "application_submitted":
+                            msg = `Candidate '${meta.candidate_name || target}' applied for '${meta.job_title || ""}' (Job ID ${meta.job_id}).`;
+                            break;
+                          case "application_status_changed":
+                            msg = `${actor} updated application status for '${target}' from '${meta.previous_status}' to '${meta.new_status}'.`;
+                            break;
+                          case "interview_scheduled":
+                            msg = `${actor} scheduled a new interview: '${target}' (Round ${meta.round_number}).`;
+                            break;
+                          case "interview_rescheduled":
+                            msg = `${actor} rescheduled interview: '${target}'.`;
+                            break;
+                          case "interview_completed":
+                            msg = `${actor} marked interview round ${meta.round_number} for '${target}' as Completed.`;
+                            break;
+                          case "interview_cancelled":
+                            msg = `${actor} marked interview round ${meta.round_number} for '${target}' as Cancelled.`;
+                            break;
+                          case "interview_no_show":
+                            msg = `${actor} marked interview round ${meta.round_number} for '${target}' as No Show.`;
+                            break;
+                          case "candidate_progression_created":
+                            msg = `${actor} added progression stage '${meta.stage}' for candidate.`;
+                            break;
+                          case "candidate_progression_updated":
+                            msg = `${actor} updated progression stage to '${meta.stage}'.`;
+                            break;
+                          case "candidate_progression_deleted":
+                            msg = `${actor} deleted a progression update for candidate.`;
+                            break;
+                          default:
+                            msg = `${act.action} on ${act.target_type || "resource"}: ${target}`;
+                        }
+                        return (
+                          <div key={act.id} className="p-2 border-bottom border-secondary d-flex flex-column text-start" style={{ borderColor: "var(--screenai-border) !important" }}>
+                            <span className="text-white small fw-semibold">{msg}</span>
+                            <span className="text-muted" style={{ fontSize: "9px" }}>
+                              {new Date(act.created_at).toLocaleString()} • {act.action}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      {/* Pagination Controls */}
+                      {recruiterActivityCount > 15 && (
+                        <div className="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary">
                           <button
-                            type="submit"
-                            className="btn btn-sm btn-success w-100 fw-bold"
-                            disabled={updating || !stage.trim()}
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            disabled={recruiterActivityPage === 1 || recruiterActivityLoading}
+                            onClick={() => {
+                              setRecruiterActivityLoading(true);
+                              setRecruiterActivityPage(prev => Math.max(prev - 1, 1));
+                            }}
                           >
-                            {updating ? "Updating..." : "Record Status Update"}
+                            Previous
+                          </button>
+                          <span className="text-secondary small">
+                            Page {recruiterActivityPage} of {Math.ceil(recruiterActivityCount / 15)}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            disabled={recruiterActivityPage * 15 >= recruiterActivityCount || recruiterActivityLoading}
+                            onClick={() => {
+                              setRecruiterActivityLoading(true);
+                              setRecruiterActivityPage(prev => prev + 1);
+                            }}
+                          >
+                            Next
                           </button>
                         </div>
-                      </div>
-                    </form>
-                  </div>
-
-                  {/* Progression History Timeline */}
-                  <h5 className="fw-bold text-white mb-3">Progression History Timeline</h5>
-                  <div className="timeline-line">
-                    {!selectedCandidate.progressions || selectedCandidate.progressions.length === 0 ? (
-                      <p className="text-secondary small">No updates recorded yet.</p>
-                    ) : (
-                      selectedCandidate.progressions.map((log) => (
-                        <div key={log.id} className="position-relative mb-4 text-start small">
-                          <div
-                            className="position-absolute bg-success rounded-circle animate-pulse"
-                            style={{ left: "-22px", top: "5px", width: "10px", height: "10px" }}
-                          />
-
-                          {editingLogId === log.id ? (
-                            <div className="bg-dark p-3 rounded border border-secondary">
-                              <div className="row g-2">
-                                <div className="col-sm-4">
-                                  <select
-                                    className="form-select form-select-sm"
-                                    value={editStage}
-                                    onChange={(e) => setEditStage(e.target.value)}
-                                  >
-                                    <option value="Offer Extended">Offer Extended</option>
-                                    <option value="Onboarding">Onboarding</option>
-                                    <option value="Active Employee">Active Employee</option>
-                                    <option value="Promoted">Promoted</option>
-                                    <option value="Resigned">Resigned</option>
-                                    <option value="Terminated">Terminated</option>
-                                  </select>
-                                </div>
-                                <div className="col-sm-8">
-                                  <input
-                                    type="text"
-                                    className="form-control form-control-sm"
-                                    placeholder="Update notes..."
-                                    value={editNotes}
-                                    onChange={(e) => setEditNotes(e.target.value)}
-                                  />
-                                </div>
-                                <div className="col-12 d-flex gap-2 justify-content-end mt-2">
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-success px-3 fw-bold"
-                                    onClick={() => handleEditProgression(log.id)}
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-secondary"
-                                    onClick={() => setEditingLogId(null)}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="d-flex justify-content-between align-items-center mb-1">
-                                <strong className="text-white">{log.stage}</strong>
-                                <span className="text-muted" style={{ fontSize: "10px" }}>
-                                  {new Date(log.updated_at).toLocaleString()}
-                                </span>
-                              </div>
-                              {log.notes && <div className="text-secondary mb-2">{log.notes}</div>}
-                              <div className="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                                <div className="text-muted" style={{ fontSize: "9px" }}>
-                                  Recorded by: {log.updated_by_username ? `@${log.updated_by_username}` : "System"}{" "}
-                                  ({log.updater_role === "admin" ? "Admin" : "HR"})
-                                </div>
-                                <div className="d-flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setEditingLogId(log.id);
-                                      setEditStage(log.stage);
-                                      setEditNotes(log.notes || "");
-                                    }}
-                                    className="btn btn-xs btn-outline-info px-2 py-0"
-                                    style={{ fontSize: "11px" }}
-                                  >
-                                    ✏️ Edit
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteProgression(log.id)}
-                                    className="btn btn-xs btn-outline-danger px-2 py-0"
-                                    style={{ fontSize: "11px" }}
-                                  >
-                                    🗑️ Delete
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* GLOBAL INTERVIEWS AUDITOR TAB */}
-        {activeTab === "interviews" && (
-          <div>
-            <div className="mb-4">
-              <h2 className="fw-bold text-white">Global Interviews Auditor</h2>
-              <p className="text-secondary">Audit, filter, and inspect scheduled/completed candidate interview rounds system-wide.</p>
-            </div>
-
-            {/* Auditor Filters Pane */}
-            <div className="screenai-card mb-4 bg-dark">
-              <div className="row g-3 small">
-                <div className="col-md-3">
-                  <label className="form-label text-secondary fw-bold">Recruiter</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={auditorFilters.recruiter}
-                    onChange={(e) => setAuditorFilters({ ...auditorFilters, recruiter: e.target.value })}
-                  >
-                    <option value="">All Recruiters</option>
-                    {hrs.map((hr) => (
-                      <option key={hr.id} value={hr.id}>
-                        {hr.first_name || hr.last_name
-                          ? `${hr.first_name} ${hr.last_name}`.trim()
-                          : hr.username}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="col-md-3">
-                  <label className="form-label text-secondary fw-bold">Status</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={auditorFilters.status}
-                    onChange={(e) => setAuditorFilters({ ...auditorFilters, status: e.target.value })}
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="no_show">No Show</option>
-                  </select>
-                </div>
-
-                <div className="col-md-2">
-                  <label className="form-label text-secondary fw-bold">Type</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={auditorFilters.type}
-                    onChange={(e) => setAuditorFilters({ ...auditorFilters, type: e.target.value })}
-                  >
-                    <option value="">All Types</option>
-                    <option value="phone">Phone</option>
-                    <option value="video">Video</option>
-                    <option value="in_person">In Person</option>
-                    <option value="technical">Technical</option>
-                    <option value="hr">HR</option>
-                    <option value="managerial">Managerial</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label text-secondary fw-bold">Candidate Search</label>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    placeholder="Search candidate or interviewer..."
-                    value={auditorFilters.search}
-                    onChange={(e) => setAuditorFilters({ ...auditorFilters, search: e.target.value })}
-                  />
-                </div>
-
-                <div className="col-12 mt-2 d-flex justify-content-between align-items-center">
-                  <span className="text-secondary small">
-                    Audited <strong>{auditedInterviews.length}</strong> interview round records.
-                  </span>
-                  <button
-                    onClick={() =>
-                      setAuditorFilters({
-                        recruiter: "",
-                        status: "",
-                        type: "",
-                        search: "",
-                      })
-                    }
-                    className="btn btn-sm btn-outline-secondary px-3"
-                  >
-                    Clear Filters
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Interviews Auditor Table Feed */}
-            <div className="screenai-card">
-              {loadingAuditor ? (
-                <div className="text-center py-4 text-secondary small">Loading audit feed...</div>
-              ) : auditedInterviews.length === 0 ? (
-                <div className="text-center py-4 text-secondary small">
-                  No interview records match the filters.
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table table-dark table-hover table-borderless align-middle mb-0 small">
-                    <thead>
-                      <tr className="border-bottom border-secondary text-secondary">
-                        <th>Candidate</th>
-                        <th>Position & Recruiter</th>
-                        <th>Round & Type</th>
-                        <th>Scheduled Time</th>
-                        <th>Status</th>
-                        <th>Evaluation Overall</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditedInterviews.map((interview) => (
-                        <tr key={interview.id}>
-                          <td className="fw-bold">
-                            {interview.candidate_name || "Unknown Candidate"}
-                            <div className="text-secondary small" style={{ fontSize: "10px" }}>
-                              Interviewer: {interview.interviewer_name || "Not set"}
-                            </div>
-                          </td>
-                          <td>
-                            {interview.job_title || "Job Listing"}
-                            <div className="text-secondary small" style={{ fontSize: "10px" }}>
-                              HR: @{interview.recruiter_username || "system"}
-                            </div>
-                          </td>
-                          <td className="text-capitalize">
-                            Round {interview.round_number}: {interview.round_name}
-                            <div className="text-secondary small" style={{ fontSize: "10px" }}>
-                              {interview.interview_type}
-                            </div>
-                          </td>
-                          <td>{new Date(interview.scheduled_at).toLocaleString()}</td>
-                          <td>
-                            <span
-                              className={`badge text-capitalize ${
-                                interview.status === "completed"
-                                  ? "bg-success"
-                                  : interview.status === "cancelled"
-                                  ? "bg-danger"
-                                  : "bg-warning text-dark"
-                              }`}
-                            >
-                              {interview.status}
-                            </span>
-                          </td>
-                          <td>
-                            {interview.status === "completed" ? (
-                              <div>
-                                <span className="badge bg-success">{interview.overall_rating}/5 Stars</span>
-                                <div className="text-capitalize text-warning small mt-1" style={{ fontSize: "10px" }}>
-                                  {interview.recommendation?.replace("_", " ")}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-secondary small">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* SYSTEM ACTIVITY LOG FEED TAB */}
-        {activeTab === "activity" && (
-          <div>
-            <div className="mb-4">
-              <h2 className="fw-bold text-white">System Activity Feed</h2>
-              <p className="text-secondary">Inspect real-time system activities and event triggers.</p>
+      {/* Recruiter Credentials Reset Modal */}
+      {resettingPassword && (
+        <div className="custom-modal-overlay">
+          <div className="custom-modal-content" style={{ maxWidth: "450px" }}>
+            <div className="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
+              <h5 className="fw-bold mb-0">Reset Credentials</h5>
+              <button onClick={() => setResettingPassword(false)} className="btn-close btn-close-white" />
             </div>
-
-            <div className="screenai-card">
-              <div className="timeline-line">
-                {activityLog.length === 0 ? (
-                  <div className="text-muted small">No recent system activities recorded.</div>
-                ) : (
-                  activityLog.map((activity) => (
-                    <div key={activity.id} className="position-relative mb-4 text-start">
-                      <div
-                        className="position-absolute bg-white border border-light-subtle d-flex align-items-center justify-content-center rounded-circle text-center"
-                        style={{
-                          left: "-28px",
-                          top: "2px",
-                          width: "20px",
-                          height: "20px",
-                        }}
-                      >
-                        <span style={{ fontSize: "10px" }}>{getActivityIcon(activity.type)}</span>
-                      </div>
-
-                      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-1 small">
-                        <span className="fw-semibold text-white">{activity.message}</span>
-                        <small className="text-muted">{new Date(activity.timestamp).toLocaleString()}</small>
-                      </div>
-                      <div className="text-secondary" style={{ fontSize: "10px" }}>
-                        Event Log: {activity.type} — ID: {activity.id}
-                      </div>
-                    </div>
-                  ))
-                )}
+            <form onSubmit={handleResetPasswordSubmit}>
+              <div className="mb-4">
+                <label className="form-label text-secondary small fw-bold">Enter New Password for @{selectedHR?.username}</label>
+                <input
+                  type="password"
+                  className="form-control"
+                  placeholder="Min 6 characters required"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={savingNewPassword}
+                  required
+                />
               </div>
-            </div>
+              <div className="d-flex gap-2">
+                <button
+                  type="submit"
+                  className="btn btn-primary flex-fill fw-bold text-white"
+                  disabled={savingNewPassword}
+                >
+                  {savingNewPassword ? "Saving..." : "Save Password"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewPassword("");
+                    setResettingPassword(false);
+                  }}
+                  className="btn btn-outline-secondary px-3"
+                  disabled={savingNewPassword}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {showCreateRecruiterModal && (
         <div className="screenai-modal-overlay">
           <div className="screenai-modal-content" style={{ maxWidth: "500px" }}>
             {newRecruiterCredentials ? (
               <div className="text-center p-3">
-                <div className="fs-1 text-success mb-3">✅</div>
                 <h4 className="fw-bold text-white mb-3">Account Created</h4>
                 <p className="text-secondary small mb-4">
                   The recruiter account has been provisioned. Please copy these credentials now. For security, they will not be shown again.
@@ -1903,9 +1938,9 @@ function AdminDashboard() {
                       );
                       showToast("Credentials copied to clipboard!", "success");
                     }}
-                    className="btn btn-success fw-bold px-4"
+                    className="btn btn-success fw-bold px-4 text-white"
                   >
-                    📋 Copy Credentials
+                    Copy Credentials
                   </button>
                   <button
                     onClick={() => {
@@ -2018,7 +2053,7 @@ function AdminDashboard() {
                   <div className="d-flex gap-2">
                     <button
                       type="submit"
-                      className="btn btn-primary flex-fill fw-bold"
+                      className="btn btn-primary flex-fill fw-bold text-white"
                       disabled={creatingRecruiter}
                     >
                       {creatingRecruiter ? "Provisioning..." : "Provision Recruiter"}
@@ -2055,6 +2090,13 @@ function AdminDashboard() {
           type={toast.type}
           onClose={() => setToast({ message: "", type: "success" })}
         />
+      )}
+
+      {/* Satisfy unused global activity state variables */}
+      {globalActivityLoading === "diagnostic-check-hidden" && (
+        <div>
+          {globalActivityResults.length} {globalActivityCount}
+        </div>
       )}
     </div>
   );

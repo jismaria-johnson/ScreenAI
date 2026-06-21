@@ -31,7 +31,7 @@ function MyJobs() {
   }, []);
 
   const copyApplicationLink = (token) => {
-    const link = `http://localhost:5173/apply/public/${token}`;
+    const link = `${window.location.origin}/apply/public/${token}`;
     navigator.clipboard.writeText(link).then(() => {
       setCopiedJobId(token);
       setTimeout(() => setCopiedJobId(null), 2000);
@@ -227,7 +227,7 @@ function MyJobs() {
                   <div className="d-grid gap-2 mt-auto">
                     {job.status === "open" && (
                       <button
-                        className="btn btn-info btn-sm"
+                        className="btn btn-primary btn-sm"
                         onClick={() =>
                           copyApplicationLink(
                             job.application_token
@@ -236,8 +236,8 @@ function MyJobs() {
                         title="Copy the public application link to share with candidates"
                       >
                         {copiedJobId === job.application_token
-                          ? "✓ Link Copied!"
-                          : "📋 Copy Application Link"}
+                          ? "Link Copied!"
+                          : "Copy Application Link"}
                       </button>
                     )}
 
@@ -245,8 +245,8 @@ function MyJobs() {
                       <button
                         className={`btn btn-sm ${
                           job.application_form_enabled
-                            ? "btn-outline-warning"
-                            : "btn-outline-success"
+                            ? "btn-outline-success"
+                            : "btn-outline-secondary"
                         }`}
                         onClick={() =>
                           toggleApplicationForm(job)
@@ -270,7 +270,7 @@ function MyJobs() {
 
                     {job.status === "open" ? (
                       <button
-                        className="btn btn-outline-warning btn-sm"
+                        className="btn btn-outline-danger btn-sm"
                         onClick={() =>
                           updateJobStatus(job, "closed")
                         }

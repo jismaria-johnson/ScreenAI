@@ -7,6 +7,7 @@ import {
   getDashboardPath,
   getUserRole,
   isLoggedIn,
+  getMustChangePassword,
 } from "../utils/auth";
 
 function ProtectedRoute({
@@ -25,6 +26,28 @@ function ProtectedRoute({
         }}
       />
     );
+  }
+
+  const mustChange = getMustChangePassword();
+
+  if (mustChange) {
+    if (location.pathname !== "/force-password-change") {
+      return (
+        <Navigate
+          to="/force-password-change"
+          replace
+        />
+      );
+    }
+  } else {
+    if (location.pathname === "/force-password-change") {
+      return (
+        <Navigate
+          to={getDashboardPath()}
+          replace
+        />
+      );
+    }
   }
 
   const role = getUserRole();

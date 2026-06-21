@@ -9,9 +9,6 @@ function Register() {
         <div className="col-lg-6 col-md-8">
           <div className="card shadow-sm text-center bg-dark border-secondary">
             <div className="card-body p-5">
-              <div className="mb-4">
-                <span className="display-4 text-warning">⚠️</span>
-              </div>
               <h2 className="mb-3 text-white">Registration Deactivated</h2>
               <p className="text-muted mb-4">
                 Public recruiter registration has been deactivated. HR accounts are now provisioned exclusively by the System Administrator.

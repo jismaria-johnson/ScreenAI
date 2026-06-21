@@ -2,7 +2,11 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
+    TokenRefreshSerializer,
 )
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from accounts.exceptions import SessionRevokedException, InactiveAccountException
 
 from .models import Profile
 
@@ -122,6 +126,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 class HRTokenObtainPairSerializer(
     TokenObtainPairSerializer
 ):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        from accounts.models import UserSecurityState
+        security_state, _ = UserSecurityState.objects.get_or_create(user=user)
+        token["token_version"] = security_state.token_version
+        token["must_change_password"] = security_state.must_change_password
+        return token
+
     def validate(self, attrs):
         data = super().validate(attrs)
 
@@ -146,12 +159,77 @@ class HRTokenObtainPairSerializer(
             )
 
         data["role"] = role
+        from accounts.models import UserSecurityState
+        security_state, _ = UserSecurityState.objects.get_or_create(user=self.user)
+        data["must_change_password"] = security_state.must_change_password
 
         from django.utils import timezone
         self.user.last_login = timezone.now()
         self.user.save(update_fields=["last_login"])
 
         return data
+
+
+class CustomTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        try:
+            refresh = RefreshToken(attrs["refresh"])
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
+
+        user_id = refresh.get("user_id")
+        if not user_id:
+            raise SessionRevokedException()
+
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise SessionRevokedException()
+
+        if not user.is_active:
+            raise InactiveAccountException()
+
+        from accounts.models import UserSecurityState
+        security_state, _ = UserSecurityState.objects.get_or_create(user=user)
+
+        token_version = refresh.get("token_version")
+        if token_version is None or token_version != security_state.token_version:
+            raise SessionRevokedException()
+
+        data = super().validate(attrs)
+        return data
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, style={"input_type": "password"})
+    new_password = serializers.CharField(required=True, style={"input_type": "password"})
+    confirm_password = serializers.CharField(required=True, style={"input_type": "password"})
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Incorrect current password.")
+        return value
+
+    def validate(self, attrs):
+        current_password = attrs.get("current_password")
+        new_password = attrs.get("new_password")
+        confirm_password = attrs.get("confirm_password")
+
+        if new_password != confirm_password:
+            raise serializers.ValidationError({"confirm_password": "New passwords do not match."})
+
+        if new_password == current_password:
+            raise serializers.ValidationError({"new_password": "New password cannot be the same as current password."})
+
+        from django.contrib.auth.password_validation import validate_password
+        user = self.context['request'].user
+        try:
+            validate_password(new_password, user=user)
+        except Exception as e:
+            raise serializers.ValidationError({"new_password": list(e.messages)})
+
+        return attrs
 
 
 class ProfileSerializer(serializers.ModelSerializer):

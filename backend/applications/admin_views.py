@@ -1,10 +1,16 @@
 from django.contrib.auth.models import User
+from django.db import models, transaction
+from django.db.models import F
 from django.utils import timezone
-from rest_framework import generics, permissions
+from django.utils.dateparse import parse_datetime, parse_date
+from rest_framework import generics, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import ValidationError
 
-from accounts.models import Profile
+from accounts.models import Profile, AuditLog, UserSecurityState
+from accounts.utils import log_audit
 from applications.models import Application, CandidateProgression, Interview
 from applications.serializers import HRApplicationSerializer, InterviewSerializer
 from jobs.models import Job
@@ -67,7 +73,7 @@ class AdminHRListView(APIView):
                 "company_name": job.company_name,
                 "status": job.status,
                 "created_at": job.created_at,
-                "candidates_count": Application.objects.filter(job=job).count(),
+                "applicant_count": Application.objects.filter(job=job).count(),
             } for job in jobs_query]
             
             jobs_count = len(jobs_list)
@@ -91,6 +97,7 @@ class AdminHRListView(APIView):
                 "company_name": app.job.company_name,
                 "submitted_at": app.submitted_at,
                 "ai_score": app.ai_score,
+                "application_status": app.application_status,
             } for app in pending_apps_query]
             
             hr_data.append({
@@ -140,6 +147,7 @@ class AdminCandidateProgressionCreateView(APIView):
     """
     permission_classes = [IsAdminOrHiringHR]
 
+    @transaction.atomic
     def post(self, request, pk):
         try:
             application = Application.objects.get(pk=pk)
@@ -158,12 +166,30 @@ class AdminCandidateProgressionCreateView(APIView):
                 status=400
             )
 
-        CandidateProgression.objects.create(
+        progression = CandidateProgression.objects.create(
             application=application,
             stage=stage,
             notes=notes,
             updated_by=request.user,
             updater_role="admin" if (request.user.is_staff or request.user.is_superuser) else "hr"
+        )
+        
+        log_audit(
+            action="candidate_progression_created",
+            actor=request.user,
+            target_type="CandidateProgression",
+            target_id=progression.id,
+            target_label=str(progression),
+            metadata={
+                "recruiter_id": application.job.hr_user.id,
+                "recruiter_username": application.job.hr_user.username,
+                "job_id": application.job.id,
+                "job_title": application.job.job_title,
+                "application_id": application.id,
+                "progression_id": progression.id,
+                "stage": stage,
+            },
+            request=request
         )
         
         # Return the updated application with progressions nested
@@ -178,6 +204,7 @@ class AdminToggleHRActiveView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @transaction.atomic
     def patch(self, request, pk):
         try:
             user = User.objects.get(pk=pk)
@@ -196,8 +223,34 @@ class AdminToggleHRActiveView(APIView):
                     status=400
                 )
             
+            previous_active = user.is_active
             user.is_active = not user.is_active
             user.save()
+
+            security_state, _ = UserSecurityState.objects.select_for_update().get_or_create(user=user)
+            if not user.is_active:
+                security_state.token_version = F("token_version") + 1
+                security_state.save()
+                security_state.refresh_from_db()
+                action = "recruiter_suspended"
+            else:
+                action = "recruiter_activated"
+
+            log_audit(
+                action=action,
+                actor=request.user,
+                target_type="User",
+                target_id=user.id,
+                target_label=user.username,
+                metadata={
+                    "username": user.username,
+                    "role": "hr",
+                    "previous_active": previous_active,
+                    "new_active": user.is_active,
+                },
+                request=request
+            )
+
             return Response({
                 "id": user.id,
                 "username": user.username,
@@ -210,101 +263,104 @@ class AdminToggleHRActiveView(APIView):
             )
 
 
-class AdminSystemActivityListView(APIView):
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source="actor.username", read_only=True, default=None)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            "id",
+            "actor",
+            "actor_username",
+            "action",
+            "target_type",
+            "target_id",
+            "target_label",
+            "metadata",
+            "ip_address",
+            "user_agent",
+            "created_at",
+        ]
+
+
+class ActivityLogPagination(PageNumberPagination):
+    page_size = 15
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class AdminSystemActivityListView(generics.ListAPIView):
     """
     Returns a unified feed of recent administrative/recruitment activities on the platform.
     Accessible only by Admin users.
     """
     permission_classes = [IsAdminUser]
+    serializer_class = AuditLogSerializer
+    pagination_class = ActivityLogPagination
 
-    def get(self, request):
-        activities = []
-        
-        # 1. Recent job postings (top 10)
-        recent_jobs = Job.objects.select_related("hr_user").order_by("-created_at")[:10]
-        for job in recent_jobs:
-            activities.append({
-                "id": f"job_{job.id}",
-                "timestamp": job.created_at,
-                "type": "job_created",
-                "message": f"HR Recruiter @{job.hr_user.username} posted a new job: '{job.job_title}' at '{job.company_name}'.",
-                "details": {"job_id": job.id, "title": job.job_title}
-            })
+    def get_queryset(self):
+        queryset = AuditLog.objects.select_related("actor").all().order_by("-created_at")
 
-        # 2. Recent applications submitted (top 15)
-        recent_applications = Application.objects.select_related("job", "job__hr_user").order_by("-submitted_at")[:15]
-        for app in recent_applications:
-            activities.append({
-                "id": f"app_{app.id}",
-                "timestamp": app.submitted_at,
-                "type": "application_submitted",
-                "message": f"Candidate '{app.candidate_name}' applied for '{app.job.job_title}' (posted by @{app.job.hr_user.username}). AI Score: {app.ai_score or 'Not evaluated'}.",
-                "details": {"app_id": app.id, "job_title": app.job.job_title, "candidate": app.candidate_name}
-            })
+        # Apply filters
+        action = self.request.query_params.get("action")
+        actor = self.request.query_params.get("actor")
+        target_id = self.request.query_params.get("target_id")
+        target_type = self.request.query_params.get("target_type")
+        recruiter_id = self.request.query_params.get("recruiter_id")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        search = self.request.query_params.get("search")
 
-        # 3. Recent candidate progression stage updates (top 15)
-        recent_progressions = CandidateProgression.objects.select_related("application", "application__job").order_by("-updated_at")[:15]
-        for prog in recent_progressions:
-            activities.append({
-                "id": f"prog_{prog.id}",
-                "timestamp": prog.updated_at,
-                "type": "progression_updated",
-                "message": f"Candidate '{prog.application.candidate_name}' progression updated to '{prog.stage}' for job '{prog.application.job.job_title}' (Notes: {prog.notes or 'None'}).",
-                "details": {"prog_id": prog.id, "stage": prog.stage}
-            })
-
-        # 4. Recent interviews (top 15)
-        recent_interviews = Interview.objects.select_related("application", "application__job").order_by("-updated_at")[:15]
-        for interview in recent_interviews:
-            candidate_name = interview.application.candidate_name
-            if not candidate_name and interview.application.candidate:
-                candidate_name = interview.application.candidate.username
-            
-            # Determine type
-            if interview.status == "completed":
-                if interview.completed_at and interview.updated_at > interview.completed_at:
-                    ev_type = "interview_feedback_updated"
-                    msg = f"Interview round {interview.round_number} ({interview.round_name}) feedback updated for candidate '{candidate_name}'."
-                else:
-                    ev_type = "interview_completed"
-                    msg = f"Interview round {interview.round_number} ({interview.round_name}) completed for candidate '{candidate_name}'."
-            elif interview.status == "cancelled":
-                ev_type = "interview_cancelled"
-                msg = f"Interview round {interview.round_number} ({interview.round_name}) cancelled for candidate '{candidate_name}'."
-            elif interview.status == "no_show":
-                ev_type = "interview_no_show"
-                msg = f"Interview round {interview.round_number} ({interview.round_name}) marked as no-show for candidate '{candidate_name}'."
+        if action:
+            queryset = queryset.filter(action=action)
+        if actor:
+            if actor.isdigit():
+                queryset = queryset.filter(actor_id=actor)
             else:
-                is_rescheduled = False
-                if interview.created_at and interview.updated_at:
-                    delta = (interview.updated_at - interview.created_at).total_seconds()
-                    if delta > 2:
-                        is_rescheduled = True
-                
-                if is_rescheduled:
-                    ev_type = "interview_rescheduled"
-                    msg = f"Interview round {interview.round_number} ({interview.round_name}) rescheduled for candidate '{candidate_name}'."
-                else:
-                    ev_type = "interview_scheduled"
-                    msg = f"Interview round {interview.round_number} ({interview.round_name}) scheduled for candidate '{candidate_name}'."
+                queryset = queryset.filter(actor__username__iexact=actor)
+        if target_id:
+            queryset = queryset.filter(target_id=target_id)
+        if target_type:
+            queryset = queryset.filter(target_type=target_type)
 
-            activities.append({
-                "id": f"interview_{interview.id}_{ev_type}",
-                "timestamp": interview.updated_at,
-                "type": ev_type,
-                "message": msg,
-                "details": {
-                    "interview_id": interview.id,
-                    "round_number": interview.round_number,
-                    "round_name": interview.round_name,
-                    "candidate": candidate_name
-                }
-            })
+        if recruiter_id:
+            queryset = queryset.filter(
+                models.Q(actor_id=recruiter_id) |
+                models.Q(target_type="User", target_id=recruiter_id) |
+                models.Q(metadata__recruiter_id=int(recruiter_id))
+            )
 
-        # Sort activities by timestamp descending
-        activities.sort(key=lambda x: x["timestamp"], reverse=True)
-        # Limit to top 30 global activities
-        return Response(activities[:30])
+        if date_from:
+            import datetime
+            parsed_from = parse_datetime(date_from) or parse_date(date_from)
+            if parsed_from is None:
+                raise ValidationError({"date_from": "Invalid date format. Use YYYY-MM-DD or ISO 8601 format."})
+            if isinstance(parsed_from, datetime.date) and not isinstance(parsed_from, datetime.datetime):
+                parsed_from = datetime.datetime.combine(parsed_from, datetime.time.min)
+            if timezone.is_aware(timezone.now()) and timezone.is_naive(parsed_from):
+                parsed_from = timezone.make_aware(parsed_from)
+            queryset = queryset.filter(created_at__gte=parsed_from)
+
+        if date_to:
+            import datetime
+            parsed_to = parse_datetime(date_to) or parse_date(date_to)
+            if parsed_to is None:
+                raise ValidationError({"date_to": "Invalid date format. Use YYYY-MM-DD or ISO 8601 format."})
+            if isinstance(parsed_to, datetime.date) and not isinstance(parsed_to, datetime.datetime):
+                parsed_to = datetime.datetime.combine(parsed_to, datetime.time.max)
+            if timezone.is_aware(timezone.now()) and timezone.is_naive(parsed_to):
+                parsed_to = timezone.make_aware(parsed_to)
+            queryset = queryset.filter(created_at__lte=parsed_to)
+
+        if search:
+            queryset = queryset.filter(
+                models.Q(action__icontains=search) |
+                models.Q(actor__username__icontains=search) |
+                models.Q(target_label__icontains=search) |
+                models.Q(target_type__icontains=search)
+            )
+
+        return queryset
 
 
 class AdminCandidateProgressionDetailView(APIView):
@@ -314,6 +370,7 @@ class AdminCandidateProgressionDetailView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @transaction.atomic
     def patch(self, request, pk):
         try:
             progression = CandidateProgression.objects.get(pk=pk)
@@ -338,10 +395,29 @@ class AdminCandidateProgressionDetailView(APIView):
         progression.updater_role = "admin"
         progression.save()
 
+        log_audit(
+            action="candidate_progression_updated",
+            actor=request.user,
+            target_type="CandidateProgression",
+            target_id=progression.id,
+            target_label=str(progression),
+            metadata={
+                "recruiter_id": progression.application.job.hr_user.id,
+                "recruiter_username": progression.application.job.hr_user.username,
+                "job_id": progression.application.job.id,
+                "job_title": progression.application.job.job_title,
+                "application_id": progression.application.id,
+                "progression_id": progression.id,
+                "stage": stage,
+            },
+            request=request
+        )
+
         # Return the updated application with progressions nested
         serializer = HRApplicationSerializer(progression.application)
         return Response(serializer.data)
 
+    @transaction.atomic
     def delete(self, request, pk):
         try:
             progression = CandidateProgression.objects.get(pk=pk)
@@ -352,7 +428,29 @@ class AdminCandidateProgressionDetailView(APIView):
             )
 
         application = progression.application
+        progression_id = progression.id
+        progression_label = str(progression)
+        stage = progression.stage
+
         progression.delete()
+
+        log_audit(
+            action="candidate_progression_deleted",
+            actor=request.user,
+            target_type="CandidateProgression",
+            target_id=progression_id,
+            target_label=progression_label,
+            metadata={
+                "recruiter_id": application.job.hr_user.id,
+                "recruiter_username": application.job.hr_user.username,
+                "job_id": application.job.id,
+                "job_title": application.job.job_title,
+                "application_id": application.id,
+                "progression_id": progression_id,
+                "stage": stage,
+            },
+            request=request
+        )
 
         # Return the updated application with progressions nested
         serializer = HRApplicationSerializer(application)
@@ -434,6 +532,7 @@ class AdminResetHRPasswordView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @transaction.atomic
     def post(self, request, pk):
         try:
             user = User.objects.get(pk=pk)
@@ -454,6 +553,26 @@ class AdminResetHRPasswordView(APIView):
             
             user.set_password(password)
             user.save()
+
+            security_state, _ = UserSecurityState.objects.select_for_update().get_or_create(user=user)
+            security_state.must_change_password = True
+            security_state.token_version = F("token_version") + 1
+            security_state.save()
+            security_state.refresh_from_db()
+
+            log_audit(
+                action="recruiter_password_reset",
+                actor=request.user,
+                target_type="User",
+                target_id=user.id,
+                target_label=user.username,
+                metadata={
+                    "username": user.username,
+                    "role": "hr",
+                },
+                request=request
+            )
+
             return Response({"detail": "Password reset successfully."})
         except User.DoesNotExist:
             return Response(

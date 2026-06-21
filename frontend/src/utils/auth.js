@@ -10,6 +10,10 @@ export const getUserRole = () => {
   return localStorage.getItem("role");
 };
 
+export const getMustChangePassword = () => {
+  return localStorage.getItem("must_change_password") === "true";
+};
+
 export const isLoggedIn = () => {
   /*
    * The access token may temporarily be missing
@@ -29,12 +33,14 @@ export const clearAuthData = () => {
   localStorage.removeItem("access");
   localStorage.removeItem("refresh");
   localStorage.removeItem("role");
+  localStorage.removeItem("must_change_password");
 };
 
 export const saveAuthData = ({
   access,
   refresh,
   role,
+  must_change_password,
 }) => {
   if (access) {
     localStorage.setItem(
@@ -54,6 +60,13 @@ export const saveAuthData = ({
     localStorage.setItem(
       "role",
       role
+    );
+  }
+
+  if (must_change_password !== undefined) {
+    localStorage.setItem(
+      "must_change_password",
+      String(must_change_password)
     );
   }
 };

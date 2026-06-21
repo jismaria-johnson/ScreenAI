@@ -285,12 +285,29 @@ def handle_application_hired(sender, instance, **kwargs):
                     updater_role = "admin"
                 else:
                     updater_role = "hr"
-            CandidateProgression.objects.create(
+            progression = CandidateProgression.objects.create(
                 application=instance,
                 stage="Hired",
                 notes="Candidate was marked as Hired by HR.",
                 updated_by=updated_by,
                 updater_role=updater_role,
+            )
+            from accounts.utils import log_audit
+            log_audit(
+                action="candidate_progression_created",
+                actor=updated_by,
+                target_type="CandidateProgression",
+                target_id=progression.id,
+                target_label=str(progression),
+                metadata={
+                    "recruiter_id": instance.job.hr_user.id,
+                    "recruiter_username": instance.job.hr_user.username,
+                    "job_id": instance.job.id,
+                    "job_title": instance.job.job_title,
+                    "application_id": instance.id,
+                    "progression_id": progression.id,
+                    "stage": progression.stage,
+                }
             )
 
 
