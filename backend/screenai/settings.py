@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     "jobs",
     "applications",
     "ai_engine",
+    "assessments",
 ]
 
 
@@ -271,4 +272,43 @@ DEFAULT_AUTO_FIELD = (
 TRUST_PROXY_HEADERS = get_boolean_env(
     "TRUST_PROXY_HEADERS",
     False,
-)
+)
+
+PRIVATE_ASSESSMENT_ROOT = os.getenv(
+    "PRIVATE_ASSESSMENT_ROOT",
+    str(BASE_DIR / "private_assessments")
+)
+
+ASSESSMENT_TOKEN_HMAC_KEY = os.getenv(
+    "ASSESSMENT_TOKEN_HMAC_KEY",
+    SECRET_KEY
+)
+
+# --- Stage 3: Brevo Assessment Invitation Settings ---
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+BREVO_API_BASE_URL = os.getenv("BREVO_API_BASE_URL", "https://api.brevo.com/v3")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "no-reply@screenai.com")
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "ScreenAI")
+BREVO_WEBHOOK_SECRET = os.getenv("BREVO_WEBHOOK_SECRET", "")
+BREVO_REQUEST_TIMEOUT_SECONDS = int(os.getenv("BREVO_REQUEST_TIMEOUT_SECONDS", "10"))
+ASSESSMENT_FRONTEND_URL = os.getenv("ASSESSMENT_FRONTEND_URL", "http://localhost:5173/assessments")
+MAX_INVITATION_LIFETIME_DAYS = int(os.getenv("MAX_INVITATION_LIFETIME_DAYS", "30"))
+ASSESSMENT_INVITATIONS_ENABLED = get_boolean_env("ASSESSMENT_INVITATIONS_ENABLED", False)
+
+# --- Stage 4: Notebook Assessment Upload Settings ---
+MAX_NOTEBOOK_UPLOAD_SIZE = int(os.getenv("MAX_NOTEBOOK_UPLOAD_SIZE", str(2 * 1024 * 1024)))
+
+# --- Stage 5: Secure Notebook Evaluation Settings ---
+EVALUATOR_DOCKER_IMAGE = os.getenv("EVALUATOR_DOCKER_IMAGE", "python:3.11-slim")
+EVALUATOR_TIMEOUT_SECONDS = int(os.getenv("EVALUATOR_TIMEOUT_SECONDS", "30"))
+EVALUATOR_MEMORY_MB = int(os.getenv("EVALUATOR_MEMORY_MB", "256"))
+EVALUATOR_CPU_LIMIT = float(os.getenv("EVALUATOR_CPU_LIMIT", "1.0"))
+EVALUATOR_MAX_OUTPUT_BYTES = int(os.getenv("EVALUATOR_MAX_OUTPUT_BYTES", str(50 * 1024)))
+EVALUATOR_STALE_TIMEOUT_SECONDS = int(os.getenv("EVALUATOR_STALE_TIMEOUT_SECONDS", "300"))
+EVALUATOR_MAX_RETRIES = int(os.getenv("EVALUATOR_MAX_RETRIES", "3"))
+EVALUATOR_POLL_INTERVAL_SECONDS = int(os.getenv("EVALUATOR_POLL_INTERVAL_SECONDS", "10"))
+
+# --- Testing / Development Settings ---
+ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING = get_boolean_env("ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING", True)
+
+

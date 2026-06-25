@@ -9,7 +9,7 @@ from django.test import override_settings
 from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from accounts.models import AuditLog
 
 
@@ -152,6 +152,60 @@ class LoginLastLoginTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.hr_user.refresh_from_db()
         self.assertIsNone(self.hr_user.last_login)
+
+
+class SimultaneousSessionsTestCase(APITestCase):
+    def setUp(self):
+        from .models import Profile
+
+        self.admin_user = User.objects.create_superuser(
+            username="sessionadmin",
+            email="sessionadmin@example.com",
+            password="adminpassword123",
+        )
+        self.hr_user = User.objects.create_user(
+            username="sessionhr",
+            email="sessionhr@example.com",
+            password="hrpassword123",
+        )
+        Profile.objects.create(user=self.hr_user, role="hr")
+
+        self.admin_client = APIClient()
+        self.hr_client = APIClient()
+        login_url = reverse("login")
+
+        admin_login = self.admin_client.post(
+            login_url,
+            {"username": "sessionadmin", "password": "adminpassword123"},
+            format="json",
+        )
+        hr_login = self.hr_client.post(
+            login_url,
+            {"username": "sessionhr", "password": "hrpassword123"},
+            format="json",
+        )
+
+        self.assertEqual(admin_login.status_code, status.HTTP_200_OK)
+        self.assertEqual(hr_login.status_code, status.HTTP_200_OK)
+        self.assertEqual(admin_login.data["role"], "admin")
+        self.assertEqual(hr_login.data["role"], "hr")
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {admin_login.data['access']}"
+        )
+        self.hr_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {hr_login.data['access']}"
+        )
+
+    def test_admin_and_hr_sessions_remain_independent(self):
+        hr_profile = self.hr_client.get(reverse("profile"))
+        self.assertEqual(hr_profile.status_code, status.HTTP_200_OK)
+        self.assertEqual(hr_profile.data["role"], "hr")
+
+        admin_action = self.admin_client.get(reverse("admin_hr_list"))
+        forbidden_hr_action = self.hr_client.get(reverse("admin_hr_list"))
+
+        self.assertEqual(admin_action.status_code, status.HTTP_200_OK)
+        self.assertEqual(forbidden_hr_action.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class ScreenAISecurityTestCase(APITestCase):

@@ -86,7 +86,7 @@ function ConfirmModal({
       {/* Backdrop */}
       <div
         className="modal-backdrop fade show"
-        style={{ zIndex: 1040 }}
+        style={{ zIndex: 1498, backgroundColor: "rgba(2, 6, 23, 0.72)" }}
         onClick={submitting ? undefined : onCancel}
       />
       {/* Modal Container */}
@@ -97,31 +97,54 @@ function ConfirmModal({
         role="dialog"
         aria-labelledby="confirm-modal-title"
         aria-modal="true"
-        style={{ zIndex: 1050, outline: "none" }}
+        style={{ zIndex: 1499, outline: "none" }}
       >
         <div className="modal-dialog modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg rounded-3">
-            <div className="modal-header border-0 bg-light">
+          <div
+            className="modal-content border-0 shadow-lg rounded-3"
+            style={{
+              backgroundColor: "var(--screenai-surface)",
+              border: "1px solid var(--screenai-border)",
+              color: "var(--screenai-text)",
+            }}
+          >
+            <div
+              className="modal-header border-0"
+              style={{
+                backgroundColor: "var(--screenai-surface)",
+                borderBottom: "1px solid var(--screenai-border)",
+              }}
+            >
               <h5
-                className="modal-title fw-bold text-dark"
+                className="modal-title fw-bold"
+                style={{ color: "var(--screenai-text)" }}
                 id="confirm-modal-title"
               >
                 {title || "Confirm Action"}
               </h5>
               <button
                 type="button"
-                className="btn-close"
+                className="btn-close btn-close-white"
                 aria-label="Close"
                 onClick={onCancel}
                 disabled={submitting}
               />
             </div>
             <div className="modal-body p-4">
-              <p className="text-secondary mb-0">
+              <p
+                className="mb-0"
+                style={{ color: "var(--screenai-text-muted)" }}
+              >
                 {message || "Are you sure you want to proceed?"}
               </p>
             </div>
-            <div className="modal-footer border-0 bg-light d-flex gap-2 justify-content-end">
+            <div
+              className="modal-footer border-0 d-flex gap-2 justify-content-end"
+              style={{
+                backgroundColor: "var(--screenai-surface)",
+                borderTop: "1px solid var(--screenai-border)",
+              }}
+            >
               <button
                 type="button"
                 className="btn btn-outline-secondary px-4 fw-semibold"
@@ -147,4 +170,3 @@ function ConfirmModal({
 }
 
 export default ConfirmModal;
-

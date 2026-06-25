@@ -16,6 +16,7 @@ import PublicApplyJob from "./pages/PublicApplyJob";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/AdminDashboard";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
+import CandidateAssessmentPage from "./pages/CandidateAssessmentPage";
 
 function App() {
   const location = useLocation();
@@ -44,6 +45,15 @@ function App() {
         <Route
           path="/apply/public/:token"
           element={<PublicApplyJob />}
+        />
+
+        <Route
+          path="/assessments/take/:token"
+          element={
+            <ErrorBoundary>
+              <CandidateAssessmentPage />
+            </ErrorBoundary>
+          }
         />
 
         <Route

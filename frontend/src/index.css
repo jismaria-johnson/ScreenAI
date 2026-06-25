@@ -834,4 +834,101 @@ textarea::-webkit-input-placeholder {
 .btn:focus, .form-select:focus, .form-control:focus {
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.45) !important;
-}
+}
+
+/* Global MUI components dark theme styling overrides */
+.MuiPaper-root {
+  background-color: var(--screenai-surface) !important;
+  color: var(--sa-text-primary) !important;
+  border: 1px solid var(--screenai-border) !important;
+}
+
+.MuiDialog-paper {
+  background-color: var(--screenai-surface) !important;
+  color: var(--sa-text-primary) !important;
+  border: 1px solid var(--screenai-border) !important;
+  box-shadow: var(--screenai-shadow-lg) !important;
+}
+
+/* MUI Dialog Sub-components */
+.MuiDialogTitle-root {
+  color: var(--sa-text-primary) !important;
+  border-bottom: 1px solid var(--screenai-border) !important;
+  font-weight: 700 !important;
+}
+
+.MuiDialogContent-root {
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiDialogActions-root {
+  border-top: 1px solid var(--screenai-border) !important;
+  background-color: var(--screenai-surface) !important;
+}
+
+/* MUI Popover/Menu dropdowns (like Select dropdown, action menu) */
+.MuiMenu-paper, .MuiPopover-paper {
+  background-color: var(--screenai-surface-elevated) !important;
+  color: var(--sa-text-primary) !important;
+  border: 1px solid var(--screenai-border) !important;
+}
+
+.MuiMenuItem-root {
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiMenuItem-root:hover {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: var(--sa-text-primary) !important;
+}
+
+.MuiMenuItem-root.Mui-selected {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--sa-text-primary) !important;
+}
+
+.MuiMenuItem-root.Mui-selected:hover {
+  background-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+/* MUI Input Labels, Input Fields, and Placeholders */
+.MuiFormLabel-root, .MuiInputLabel-root {
+  color: var(--sa-text-secondary) !important;
+}
+
+.MuiFormLabel-root.Mui-focused, .MuiInputLabel-root.Mui-focused {
+  color: var(--screenai-primary) !important;
+}
+
+.MuiInputBase-input {
+  color: var(--sa-text-primary) !important;
+}
+
+/* Outlined Inputs notched outline (borders) */
+.MuiOutlinedInput-notchedOutline {
+  border-color: var(--screenai-border) !important;
+}
+
+.MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--screenai-primary-hover) !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: var(--screenai-primary) !important;
+}
+
+/* MUI Selects icon and selected text styling */
+.MuiSelect-icon {
+  color: var(--sa-text-secondary) !important;
+}
+
+/* FormHelperText and placeholders inside MUI components */
+.MuiFormHelperText-root {
+  color: var(--sa-text-muted) !important;
+}
+
+.MuiInputBase-input::placeholder {
+  color: var(--sa-placeholder) !important;
+  opacity: 1 !important;
+}
+

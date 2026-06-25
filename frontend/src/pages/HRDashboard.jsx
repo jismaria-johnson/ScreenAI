@@ -7,6 +7,8 @@ import ConfirmModal from "../components/ConfirmModal";
 import { clearAuthData } from "../utils/auth";
 import { DataGrid } from "@mui/x-data-grid";
 import { Popper, Paper, MenuList, MenuItem, ClickAwayListener, Dialog, DialogTitle, DialogContent, DialogActions, useTheme, useMediaQuery, Tooltip, Chip, IconButton, Menu } from "@mui/material";
+import AssessmentsManager from "../components/assessments/AssessmentsManager";
+import AssessmentSection from "../components/assessments/AssessmentSection";
 
 
 const getCandidateName = (app) => {
@@ -232,6 +234,7 @@ function CandidateWorkspaceContent({
       summary: false,
       aiEvaluation: false,
       interviews: false,
+      assessment: false,
       decision: false,
       progression: false,
     };
@@ -243,6 +246,8 @@ function CandidateWorkspaceContent({
       sections.decision = true;
     } else if (initialSection === "aiEvaluation") {
       sections.aiEvaluation = true;
+    } else if (initialSection === "assessment") {
+      sections.assessment = true;
     } else {
       // Default to summary
       sections.summary = true;
@@ -728,14 +733,21 @@ function CandidateWorkspaceContent({
         )}
       </div>
 
-      {/* Section 4: Recruitment Decision (Only visible if status is NOT hired) */}
+      <AssessmentSection
+        application={application}
+        showToast={showToast}
+        isExpanded={expandedSections.assessment}
+        onToggle={() => toggleSection("assessment")}
+      />
+
+      {/* Section 5: Recruitment Decision (Only visible if status is NOT hired) */}
       {application.application_status !== "hired" && (
         <div className="p-3 rounded border text-start" style={{ backgroundColor: "var(--screenai-bg)", borderColor: "var(--screenai-border)" }}>
           <h5 
             onClick={() => toggleSection("decision")}
             className="fw-bold text-white mb-0 pb-2 border-bottom border-secondary small text-uppercase tracking-wider cursor-pointer d-flex justify-content-between align-items-center"
           >
-            <span>4. Recruitment Decision</span>
+            <span>5. Recruitment Decision</span>
             <span className="small text-muted" style={{ fontSize: "11px" }}>{expandedSections.decision ? "Hide" : "Show"}</span>
           </h5>
 
@@ -1040,7 +1052,7 @@ function HRDashboard() {
   // Tab State & Safe Mapping
   const rawTab = searchParams.get("tab") || "overview";
   const activeTab = useMemo(() => {
-    if (["overview", "jobs", "profile"].includes(rawTab)) {
+    if (["overview", "jobs", "assessments", "profile"].includes(rawTab)) {
       return rawTab;
     }
     if (["applications", "candidates", "recruitment", "shortlisted", "pending"].includes(rawTab)) {
@@ -2432,6 +2444,13 @@ function HRDashboard() {
         </button>
 
         <button
+          onClick={() => handleTabChange("assessments")}
+          className={`screenai-sidebar-item ${activeTab === "assessments" ? "active" : ""}`}
+        >
+          Assessments
+        </button>
+
+        <button
           onClick={() => handleTabChange("profile")}
           className={`screenai-sidebar-item ${activeTab === "profile" ? "active" : ""}`}
         >
@@ -3377,6 +3396,11 @@ function HRDashboard() {
         );
       }
     })()}
+
+        {/* ASSESSMENTS TAB */}
+        {activeTab === "assessments" && (
+          <AssessmentsManager showToast={showToast} />
+        )}
 
         {/* MY PROFILE TAB */}
         {activeTab === "profile" && (

@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 
 import API from "../api/axiosConfig";
+import { getAccessToken, getUserRole } from "../utils/auth";
 
 function ApplyJob() {
   const routeParams = useParams();
@@ -176,10 +177,10 @@ function ApplyJob() {
     setError("");
 
     const accessToken =
-      localStorage.getItem("access");
+      getAccessToken();
 
     const role =
-      localStorage.getItem("role");
+      getUserRole();
 
     if (!accessToken) {
       setError(

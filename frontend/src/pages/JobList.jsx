@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import API from "../api/axiosConfig";
+import { getAccessToken, getUserRole } from "../utils/auth";
 
 function JobList() {
   const [jobs, setJobs] = useState([]);
   const [appliedJobIds, setAppliedJobIds] = useState([]);
 
-  const role = localStorage.getItem("role");
-  const token = localStorage.getItem("access");
+  const role = getUserRole();
+  const token = getAccessToken();
 
   const fetchJobs = async () => {
     try {

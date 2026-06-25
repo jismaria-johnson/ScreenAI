@@ -71,8 +71,10 @@ class ApplyJobView(
                 }
             )
 
+        from django.conf import settings
         already_applied = (
-            Application.objects.filter(
+            not getattr(settings, "ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING", False)
+            and Application.objects.filter(
                 candidate=self.request.user,
                 job=job,
             ).exists()
@@ -529,8 +531,10 @@ class PublicApplicationCreateView(
         ).lower().strip()
 
         # Check for duplicate application
+        from django.conf import settings
         already_applied = (
-            Application.objects.filter(
+            not getattr(settings, "ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING", False)
+            and Application.objects.filter(
                 job=job,
                 candidate_email__iexact=(
                     candidate_email

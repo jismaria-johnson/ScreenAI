@@ -58,7 +58,7 @@ const refreshAccessToken = async () => {
     );
   }
 
-  localStorage.setItem(
+  sessionStorage.setItem(
     "access",
     newAccessToken
   );
@@ -77,7 +77,7 @@ API.interceptors.response.use(
 
     // 1. Password change required (HTTP 403)
     if (status === 403 && errorCode === "password_change_required") {
-      localStorage.setItem("must_change_password", "true");
+      sessionStorage.setItem("must_change_password", "true");
       if (window.location.pathname !== "/force-password-change") {
         window.location.replace("/force-password-change");
       }

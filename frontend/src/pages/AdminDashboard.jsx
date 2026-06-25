@@ -1107,8 +1107,6 @@ function AdminDashboard() {
             className="btn btn-outline-danger btn-sm fw-bold"
             onClick={() => {
               clearAuthData();
-              localStorage.clear();
-              sessionStorage.clear();
               navigate("/", { replace: true });
             }}
           >

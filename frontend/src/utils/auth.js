@@ -1,17 +1,17 @@
 export const getAccessToken = () => {
-  return localStorage.getItem("access");
+  return sessionStorage.getItem("access");
 };
 
 export const getRefreshToken = () => {
-  return localStorage.getItem("refresh");
+  return sessionStorage.getItem("refresh");
 };
 
 export const getUserRole = () => {
-  return localStorage.getItem("role");
+  return sessionStorage.getItem("role");
 };
 
 export const getMustChangePassword = () => {
-  return localStorage.getItem("must_change_password") === "true";
+  return sessionStorage.getItem("must_change_password") === "true";
 };
 
 export const isLoggedIn = () => {
@@ -30,10 +30,10 @@ export const isLoggedIn = () => {
 };
 
 export const clearAuthData = () => {
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-  localStorage.removeItem("role");
-  localStorage.removeItem("must_change_password");
+  sessionStorage.removeItem("access");
+  sessionStorage.removeItem("refresh");
+  sessionStorage.removeItem("role");
+  sessionStorage.removeItem("must_change_password");
 };
 
 export const saveAuthData = ({
@@ -43,28 +43,28 @@ export const saveAuthData = ({
   must_change_password,
 }) => {
   if (access) {
-    localStorage.setItem(
+    sessionStorage.setItem(
       "access",
       access
     );
   }
 
   if (refresh) {
-    localStorage.setItem(
+    sessionStorage.setItem(
       "refresh",
       refresh
     );
   }
 
   if (role) {
-    localStorage.setItem(
+    sessionStorage.setItem(
       "role",
       role
     );
   }
 
   if (must_change_password !== undefined) {
-    localStorage.setItem(
+    sessionStorage.setItem(
       "must_change_password",
       String(must_change_password)
     );
