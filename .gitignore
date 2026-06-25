@@ -45,6 +45,9 @@ ScreenAI_review.zip
 ScreenAI_review/
 *.tmp
 *.temp
+tmp/
+output/
+backend/private_assessments/
 
 # IDEs
 .vscode/

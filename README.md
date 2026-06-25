@@ -1,232 +1,277 @@
 # ScreenAI
 
-ScreenAI is an AI-assisted recruitment screening platform that helps HR teams publish jobs, collect public candidate applications, analyze resumes, manage interviews, and track hiring progress through HR and Admin dashboards.
+ScreenAI is an AI-assisted recruitment screening platform for managing job openings, public applications, resume review, candidate workflows, interviews, post-hire progression, admin governance, and browser-based coding assessments.
+
+The project includes an HR recruiter dashboard, an admin command dashboard, public job application pages, AI resume scoring, secure audit logging, and a take-home assessment workflow with Brevo email invitations and Docker-based code evaluation.
+
+## Current Status
+
+Active feature branch: `notebook-assessments`
+
+The recruitment workflow is working. The assessment workflow is under active refinement, especially the question-template editor, visible sample test cases, and LeetCode-style run output.
 
 ## Key Features
 
-* **Admin-Created Recruiter Accounts:** No public self-registration for HR; recruiters are provisioned exclusively by administrators.
-* **HR Job Creation & Management:** Create, edit, close, and manage active jobs.
-* **UUID-Based Public Application Links:** Generate secure, unique links for each job listing.
-* **Public Candidate Application Form:** Simple form allowing candidates to apply directly to open listings.
-* **PDF Resume Upload & Validation:** Secure document processing with strict file type (PDF) and size (under 5 MB) checks.
-* **AI Resume Scoring & Recommendation:** Auto-parse resumes using Gemini to extract skills, experience years, and provide a compatibility score.
-* **Candidate Filtering & Review:** Rich filtering options for recruiters based on AI score, experience, or matched skills.
-* **Shortlist/Reject/Hire Workflow:** Streamlined stages to progress candidate applications.
-* **Interview Scheduling & Tracking:** Recruiter workspace to manage scheduling, updates, and candidate rounds.
-* **Post-Hire Progression Tracking:** Governance overview to track hired candidates' onboarding/progression pipeline.
-* **Admin Recruiter Governance:** Administration panel to monitor recruiters' active jobs, metrics, and manage credentials.
-* **Recruiter Suspension/Reactivation:** Admins can suspend or reactivate recruiter accounts on the fly.
-* **Recruiter Credential Reset:** Safe mechanism to reset password credentials for HR staff.
-* **Audit & Activity Tracking:** Recruiter analytics overview dashboard.
-* **Responsive Dark UI:** Sleek, modern dashboard utilizing CSS variables and unified surface levels.
+- Admin-created recruiter accounts with suspension, activation, password reset, forced password change, and session revocation.
+- HR job management with public application links.
+- Public candidate application form with PDF resume upload.
+- AI resume parsing, compatibility scoring, recommendation, and HR-only score breakdowns.
+- Unified candidate workspace for summary, resume evaluation, interviews, assessment, recruitment decision, and post-hire progression.
+- Interview scheduling and timeline tracking.
+- Post-hire progression logs for hired candidates.
+- Admin dashboard with recruiter governance, application directories, candidate identities, audit logs, and protected resume streaming.
+- Browser-based take-home coding assessments with recruiter-created templates, Brevo invitations, candidate coding workspace, save progress, final submit, Docker evaluation, and recruiter result summaries.
 
 ## Tech Stack
 
-* **Frontend:** React, JavaScript (ES6+), Vite, Vanilla CSS (Custom tokens), Bootstrap 5, React Router, Axios.
-* **Backend:** Python 3, Django, Django REST Framework, Django Simple JWT (Token Auth), django-cors-headers, SQLite.
-* **AI & Document Processing:** Gemini API (`google.generativeai`), `pdfplumber`.
+### Backend
+
+- Python
+- Django
+- Django REST Framework
+- Django Simple JWT
+- SQLite for local development
+- Django CORS Headers
+- Gemini API for resume scoring
+- Docker sandbox for assessment code execution
+- Brevo Transactional Email API for assessment invitations
+
+### Frontend
+
+- React
+- Vite
+- React Router
+- Axios
+- Material UI
+- MUI Data Grid
+- Monaco/code-editor style assessment workspace
+- Bootstrap utilities
+- Custom ScreenAI dark theme tokens
 
 ## User Roles
 
-### 1. Admin
-* Provisions and manages HR recruiter accounts.
-* Suspends or reactivates recruiter profiles.
-* Resets HR recruiter passwords.
-* Views platform-wide performance analytics and placed candidate progression pipelines.
+### Admin
 
-### 2. HR Recruiter
-* Creates and publishes job postings.
-* Shares unique application links with prospective candidates.
-* Reviews candidates, reads AI-generated summaries, and filters applications.
-* Schedules interview rounds, records feedback, and updates hiring statuses.
+- Creates and manages recruiter accounts.
+- Suspends/reactivates recruiters.
+- Resets recruiter credentials.
+- Reviews platform-wide jobs, applications, candidates, hires, interviews, and audit activity.
+- Accesses protected admin-only directories and governance tools.
 
-### 3. Candidate
-* Accesses public application pages via job-specific UUID links.
-* Submits details and uploads a PDF resume without registering an account.
+### HR Recruiter
+
+- Creates and manages jobs.
+- Shares public application links.
+- Reviews candidates and AI score summaries.
+- Schedules interviews.
+- Shortlists, rejects, hires, and tracks candidate progression.
+- Sends take-home assessment invitations.
+- Reviews and evaluates submitted assessment results.
+
+### Candidate
+
+- Applies through a public job link.
+- Uploads a PDF resume.
+- Opens secure assessment invitation links.
+- Writes code in the browser-based assessment workspace.
+- Saves progress and submits the exam.
 
 ## Main Workflows
 
-### Candidate Flow
+### Public Application Flow
+
 ```text
-Access secure public job link
-→ Complete applicant form details
-→ Upload PDF resume
-→ Auto-triggers backend AI parsing and scoring
+Candidate opens public job link
+-> fills application form
+-> uploads PDF resume
+-> backend parses resume
+-> AI score and recommendation are generated
+-> recruiter reviews candidate in workspace
 ```
 
-### HR Flow
+### HR Candidate Review Flow
+
 ```text
-Admin creates recruiter credentials
-→ Recruiter logs in via JWT
-→ Publishes job listing & generates public token link
-→ Reviews applicants using AI score and feedback
-→ Schedules interview rounds & manages candidate status
+Recruiter opens candidate workspace
+-> reviews summary and resume/AI evaluation
+-> optionally schedules interviews
+-> optionally sends take-home assessment
+-> shortlists, rejects, or hires candidate
+-> tracks post-hire progression if hired
 ```
 
-### Admin Flow
+### Take-Home Assessment Flow
+
 ```text
-Admin login
-→ Manage recruiter list (create, suspend, reset password)
-→ Track placed candidates' progression logs
-→ Review general platform analytics (jobs, applicants, hires)
+Recruiter creates and activates assessment template
+-> recruiter sends invitation from candidate workspace
+-> candidate opens secure email link
+-> candidate writes code directly in browser
+-> candidate can run visible/sample checks
+-> candidate saves progress
+-> candidate final-submits
+-> recruiter clicks Evaluate
+-> Docker sandbox runs hidden tests
+-> recruiter reviews score and question breakdown
 ```
 
-## Security Highlights
+### Admin Governance Flow
 
-* **JWT Authentication:** Stateful session authentication using secure access/refresh JSON Web Tokens.
-* **Role-Based Access Control (RBAC):** Strict view/endpoint constraints between HR and Admin capabilities.
-* **Admin-Only Recruiter Provisioning:** Excludes any self-signup routes for recruiter accounts.
-* **Suspended Account Blocking:** Instantly blocks login attempts for suspended recruiters.
-* **UUID Public Links:** Protects application pages from URL enumeration attacks.
-* **PDF-Only Resume Validation:** Enforces strict mime-type verification.
-* **Public Application Throttling:** Rate limiting to protect endpoints from automated abuse.
-* **Transaction-Safe Actions:** Ensures database integrity when hiring or updating models.
-* **Credential Safety:** Temporary passwords are not exposed or logged after creation/reset.
-* **Excluded Configuration Secrets:** Excludes all environment secrets and local database copies.
+```text
+Admin logs in
+-> monitors recruiters, jobs, candidates, applications, interviews, hires
+-> suspends/reactivates recruiters when needed
+-> resets credentials
+-> reviews audit activity
+```
 
 ## Project Structure
 
 ```text
 ScreenAI/
-├── backend/
-│   ├── accounts/          # Authentication & recruiter provisioning
-│   ├── jobs/              # Job posting & management models/views
-│   ├── applications/      # Applications, scheduling, & progression logs
-│   ├── ai_engine/         # Gemini parsing & scoring logic
-│   ├── screenai/          # Core Django project settings
-│   └── requirements.txt   # Backend dependencies list
-│
-├── frontend/
-│   ├── src/
-│   │   ├── api/           # Axios interceptors & configs
-│   │   ├── components/    # Reusable widgets (Navbar, Toast, etc.)
-│   │   ├── pages/         # Dashboard panels & public form pages
-│   │   ├── utils/         # Authentication storage helpers
-│   │   ├── App.jsx        # Routing & layout configuration
-│   │   └── index.css      # Core styles & dark design tokens
-│   ├── package.json       # Frontend package configuration
-│   └── vite.config.js     # Vite compiler configuration
-│
-└── README.md
+|-- backend/
+|   |-- accounts/          # Authentication, users, audit logs, security state
+|   |-- jobs/              # Job posting and public job links
+|   |-- applications/      # Applications, interviews, progression, admin directories
+|   |-- assessments/       # Templates, invitations, candidate workspace, grading
+|   |-- ai_engine/         # Gemini resume scoring
+|   `-- screenai/          # Django settings and root URLs
+|
+|-- frontend/
+|   |-- src/
+|   |   |-- api/           # Axios config and API helpers
+|   |   |-- components/    # Reusable UI and assessment components
+|   |   |-- pages/         # Dashboards, public apply page, assessment page
+|   |   `-- utils/         # Auth helpers
+|   `-- package.json
+|
+`-- README.md
 ```
 
-## Setup Instructions
+## Environment Variables
 
-### Environment Variables
+Do not commit `.env` files.
 
-#### Backend (`backend/.env`)
-The Django backend requires a `.env` file inside the `backend/` directory. Create this file locally and define the following variables:
+### Backend: `backend/.env`
 
 ```env
-# Local Development
-GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash-lite
-DJANGO_SECRET_KEY=generate_a_secure_django_secret_key
+
+DJANGO_SECRET_KEY=your_local_secret_key
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-# Production Example
-# GEMINI_API_KEY=your_production_gemini_key
-# GEMINI_MODEL=gemini-2.5-flash-lite
-# DJANGO_SECRET_KEY=secure-production-only-key
-# DJANGO_DEBUG=False
-# DJANGO_ALLOWED_HOSTS=api.screenai.com
-# CORS_ALLOWED_ORIGINS=https://screenai.com
+ASSESSMENT_INVITATIONS_ENABLED=True
+ASSESSMENT_FRONTEND_URL=http://localhost:5173
+ASSESSMENT_TOKEN_HMAC_KEY=local_assessment_hmac_key
+
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=verified_sender@example.com
+BREVO_SENDER_NAME=ScreenAI
+BREVO_WEBHOOK_SECRET=your_webhook_secret
+
+MAX_NOTEBOOK_UPLOAD_SIZE=5242880
+RUN_CODE_PREVIEW_TIMEOUT_SECONDS=5
+EVALUATOR_DOCKER_IMAGE=python:3.11-slim
 ```
 
-#### Frontend (`frontend/.env`)
-The React frontend loads environment variables starting with `VITE_` during build time. Copy the provided `frontend/.env.example` to `frontend/.env` to configure your environment variables:
+### Frontend: `frontend/.env`
 
 ```env
-# Local Development Fallback
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
-
-# Production Example
-# VITE_API_BASE_URL=https://api.screenai.com/api
+VITE_ASSESSMENT_INVITATIONS_ENABLED=true
 ```
 
-> [!IMPORTANT]
-> **Vite Build-time Environments**: Vite injects environment variables statically into the production bundle during compilation. Therefore, `VITE_API_BASE_URL` must be configured in `frontend/.env` (or via system environment variables) **before** executing the production frontend build (`npm run build`).
+Vite reads frontend environment variables at build/start time, so restart the frontend dev server after changing `frontend/.env`.
 
-> [!WARNING]
-> Never commit any `.env` file or SQLite database (`db.sqlite3`) to git.
+## Local Setup
 
-### Running Backend
+### Backend
 
-1. Navigate to the `backend/` folder:
-   ```powershell
-   cd backend
-   ```
-2. Create and activate a Python virtual environment:
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-3. Install dependencies:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-4. Run migrations:
-   ```powershell
-   python manage.py migrate
-   ```
-5. Create an Admin superuser account:
-   ```powershell
-   python manage.py createsuperuser
-   ```
-6. Run Django validation checks:
-   ```powershell
-   python manage.py check
-   ```
-7. Launch the development server:
-   ```powershell
-   python manage.py runserver
-   ```
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+```
 
-### Running Frontend
+### Frontend
 
-1. Navigate to the `frontend/` folder:
-   ```powershell
-   cd frontend
-   ```
-2. Install Node packages:
-   ```powershell
-   npm install
-   ```
-3. Start the Vite server:
-   ```powershell
-   npm run dev
-   ```
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+## Assessment Development Notes
+
+- Docker Desktop must be running for `Run Code` and final grading to work.
+- If Docker is not running, assessment evaluation can fail with `docker_unavailable`.
+- The recruiter-side Evaluate button is intended to queue and trigger evaluation in local development.
+- A manual fallback worker command is available:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe manage.py process_assessments
+```
 
 ## Testing
 
-### Backend tests
-Run Django tests locally to verify serializers, view logic, and endpoints:
+Run targeted tests while developing to save time:
+
 ```powershell
 cd backend
-.\.venv\Scripts\Activate.ps1
-python manage.py test
+.\.venv\Scripts\python.exe manage.py test assessments
+.\.venv\Scripts\python.exe manage.py test applications
+.\.venv\Scripts\python.exe manage.py test accounts
 ```
 
-### Frontend tests
-Verify code styling and build compatibility:
+Run all backend tests before major merges:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe manage.py test
+```
+
+Frontend checks:
+
 ```powershell
 cd frontend
 npm run lint
 npm run build
 ```
 
-## Git Branch Note
-All development, visual polishing, and recruitment flow fixes are implemented on the `public-application-flow` branch.
+## Deployment Checklist
 
-## Future Improvements
+- Use a production database such as PostgreSQL.
+- Set `DJANGO_DEBUG=False`.
+- Configure `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`.
+- Configure HTTPS.
+- Configure Brevo API key, verified sender, and webhook secret.
+- Run migrations.
+- Build frontend with the correct production `VITE_API_BASE_URL`.
+- Ensure a safe worker/evaluation strategy for assessment grading.
+- Keep generated reports, private assessment files, local databases, and runtime folders out of git.
 
-* Dynamic public application forms generated/configured by HR.
-* Email notifications for scheduled interview rounds.
-* Support for application withdrawal.
-* Resume replacement and scoring recalculations.
-* List pagination for tables with large candidate datasets.
-* Background task queues for AI scoring.
-* Cloud media storage integration.
-* Transition to production PostgreSQL databases.
+## Known Current Priorities
+
+- Make assessment question templates fully data-driven:
+  - examples;
+  - visible sample test cases;
+  - expected outputs;
+  - function metadata;
+  - per-question constraints/time limit.
+- Improve `Run Code` output to show:
+  - sample input;
+  - actual function return value;
+  - expected value;
+  - pass/fail result;
+  - console output separately.
+- Ensure result status labels do not show "Passed" when score/tests are zero.
+- End-to-end test a fresh candidate assessment from invite to grading.
+
