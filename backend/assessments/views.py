@@ -913,7 +913,9 @@ class CandidateAssessmentSubmitView(APIView):
         submit_candidate_assessment(assessment)
         assessment.refresh_from_db()
         auto_queue_error = None
-        if assessment.status == "submitted":
+        from django.conf import settings
+        evaluation_enabled = getattr(settings, "EVALUATION_ENABLED", True)
+        if assessment.status == "submitted" and evaluation_enabled:
             try:
                 assessment = queue_submission_for_evaluation(assessment.id, queued_by_user=None)
                 import sys
@@ -943,6 +945,12 @@ class CandidateRunCodeView(APIView):
         return custom_assessment_exception_handler
 
     def post(self, request, token, *args, **kwargs):
+        from django.conf import settings
+        if not getattr(settings, "EVALUATION_ENABLED", True):
+            return Response(
+                {"detail": "Evaluation is temporarily unavailable.", "code": "evaluation_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         """
         Preview-only code execution endpoint for the browser-based assessment workspace.
         Runs the candidate's current question code in a sandboxed Docker container,
@@ -1011,6 +1019,12 @@ class QueueSubmissionForEvaluationView(APIView):
         return custom_assessment_exception_handler
 
     def post(self, request, pk, *args, **kwargs):
+        from django.conf import settings
+        if not getattr(settings, "EVALUATION_ENABLED", True):
+            return Response(
+                {"detail": "Evaluation is temporarily unavailable.", "code": "evaluation_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         try:
             assessment = CandidateAssessment.objects.get(pk=pk)
         except CandidateAssessment.DoesNotExist:
@@ -1039,6 +1053,12 @@ class CandidateAssessmentRetryView(APIView):
         return custom_assessment_exception_handler
 
     def post(self, request, pk, *args, **kwargs):
+        from django.conf import settings
+        if not getattr(settings, "EVALUATION_ENABLED", True):
+            return Response(
+                {"detail": "Evaluation is temporarily unavailable.", "code": "evaluation_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         try:
             assessment = CandidateAssessment.objects.get(pk=pk)
         except CandidateAssessment.DoesNotExist:
@@ -1150,6 +1170,12 @@ class CandidateRunTestsView(APIView):
         return custom_assessment_exception_handler
 
     def post(self, request, token, *args, **kwargs):
+        from django.conf import settings
+        if not getattr(settings, "EVALUATION_ENABLED", True):
+            return Response(
+                {"detail": "Evaluation is temporarily unavailable.", "code": "evaluation_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         from django.core.exceptions import ValidationError as DjangoValidationError
         from .evaluator import SUPPORTED_LANGUAGES
 
@@ -1231,3 +1257,33 @@ class CandidateRunTestsView(APIView):
             )
 
         return Response(result, status=status.HTTP_200_OK)
+
+
+class CandidateSubmittedAnswersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, *args, **kwargs):
+        try:
+            assessment = CandidateAssessment.objects.select_related(
+                "application__job__hr_user"
+            ).get(pk=pk)
+        except CandidateAssessment.DoesNotExist:
+            raise Http404("Assessment assignment not found.")
+
+        # Ensure only the hiring recruiter (hr_user) or staff/admin can access
+        is_staff_or_super = request.user.is_staff or request.user.is_superuser
+        if not is_staff_or_super and assessment.application.job.hr_user != request.user:
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        answers_qs = CandidateAnswer.objects.filter(candidate_assessment=assessment).select_related("question")
+
+        response_data = []
+        for answer in answers_qs:
+            response_data.append({
+                "question_title": answer.question.title,
+                "candidate_code": answer.answer_text,
+                "selected_language": answer.selected_language,
+                "submitted_at": assessment.submitted_at.isoformat() if assessment.submitted_at else None,
+            })
+
+        return Response(response_data, status=status.HTTP_200_OK)

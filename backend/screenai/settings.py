@@ -110,6 +110,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -156,6 +157,11 @@ WSGI_APPLICATION = (
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+import sys
+TESTING = "test" in sys.argv
+if TESTING:
+    DATABASE_URL = ""
 
 if DATABASE_URL:
     parsed_database_url = urlparse(DATABASE_URL)
@@ -329,4 +335,57 @@ EVALUATOR_POLL_INTERVAL_SECONDS = int(os.getenv("EVALUATOR_POLL_INTERVAL_SECONDS
 # --- Testing / Development Settings ---
 ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING = get_boolean_env("ALLOW_DUPLICATE_APPLICATIONS_FOR_TESTING", True)
 
-
+# --- Production Cookie Security Settings ---
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# --- Proxy Header Configuration for Render ---
+if TRUST_PROXY_HEADERS:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# --- CSRF Trusted Origins Configuration ---
+CSRF_TRUSTED_ORIGINS = get_list_env("CSRF_TRUSTED_ORIGINS", "")
+
+# --- Static files ---
+STATIC_ROOT = os.getenv("STATIC_ROOT", str(BASE_DIR / "staticfiles"))
+
+# --- Supabase Storage Configuration ---
+import sys
+TESTING = "test" in sys.argv
+SUPABASE_STORAGE_ENABLED = get_boolean_env("SUPABASE_STORAGE_ENABLED", False) and not TESTING
+
+if SUPABASE_STORAGE_ENABLED:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "access_key": os.getenv("SUPABASE_S3_ACCESS_KEY_ID"),
+                "secret_key": os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY"),
+                "bucket_name": os.getenv("SUPABASE_STORAGE_BUCKET"),
+                "endpoint_url": os.getenv("SUPABASE_S3_ENDPOINT_URL"),
+                "region_name": os.getenv("SUPABASE_S3_REGION"),
+                "querystring_auth": True,
+                "querystring_expire": int(os.getenv("SUPABASE_STORAGE_URL_EXPIRY_SECONDS", "3600")),
+                "signature_version": "s3v4",
+                "file_overwrite": False,
+                "custom_domain": None,
+                "addressing_style": "path",
+            }
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        }
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        }
+    }
+
+# --- Evaluator Feature Flags ---
+EVALUATION_ENABLED = get_boolean_env("EVALUATION_ENABLED", True)

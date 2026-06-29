@@ -393,13 +393,13 @@ export default function AssessmentsManager({ showToast }) {
           showToast(`Visible test case ${i + 1} input must be a JSON array of arguments (e.g. ["arg1"] or [[1, 2]]).`, "error");
           return;
         }
-      } catch (err) {
+      } catch {
         showToast(`Visible test case ${i + 1} input is not valid JSON.`, "error");
         return;
       }
       try {
         JSON.parse(tc.expected_output);
-      } catch (err) {
+      } catch {
         showToast(`Visible test case ${i + 1} expected output is not valid JSON.`, "error");
         return;
       }
@@ -418,13 +418,13 @@ export default function AssessmentsManager({ showToast }) {
           showToast(`Hidden test case ${i + 1} input must be a JSON array of arguments (e.g. ["arg1"] or [[1, 2]]).`, "error");
           return;
         }
-      } catch (err) {
+      } catch {
         showToast(`Hidden test case ${i + 1} input is not valid JSON.`, "error");
         return;
       }
       try {
         JSON.parse(tc.expected_output);
-      } catch (err) {
+      } catch {
         showToast(`Hidden test case ${i + 1} expected output is not valid JSON.`, "error");
         return;
       }

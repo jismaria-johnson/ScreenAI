@@ -21,6 +21,7 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 const AUTO_SAVE_DEBOUNCE_MS = 1200; // 1.2 seconds after last keystroke
+const evaluationEnabled = import.meta.env.VITE_EVALUATION_ENABLED !== "false";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -291,6 +292,7 @@ function CandidateAssessmentPageContent({ token }) {
     activeQuestionIdRef.current = activeQuestionId;
   }, [activeQuestionId]);
 
+  // eslint-disable-next-line no-unused-vars
   const resetWorkspaceState = () => {
     setAssessment(null);
     setAnswers({});
@@ -354,6 +356,7 @@ function CandidateAssessmentPageContent({ token }) {
   }, [token]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAssessmentData(true, true);
   }, [fetchAssessmentData]);
 
@@ -1049,8 +1052,9 @@ function CandidateAssessmentPageContent({ token }) {
                   {/* Action buttons */}
                   <div className="d-flex align-items-center gap-2">
                     {/* Run Code button */}
-                    <button
-                      id="run-code-btn"
+                    {evaluationEnabled && (
+                      <button
+                        id="run-code-btn"
                       onClick={handleRun}
                       disabled={isEditorLocked || running || runningTests}
                       className="btn px-3 py-1 fw-bold d-flex align-items-center gap-2"
@@ -1085,6 +1089,7 @@ function CandidateAssessmentPageContent({ token }) {
                         </>
                       )}
                     </button>
+                    )}
 
                     {/* Final Submit */}
                     {assessment.status === "submitted" ? (

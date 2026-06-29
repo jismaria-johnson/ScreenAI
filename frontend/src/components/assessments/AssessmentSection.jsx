@@ -28,6 +28,7 @@ export default function AssessmentSection({
   const [sending, setSending] = useState(false);
 
   const invitationsEnabled = import.meta.env.VITE_ASSESSMENT_INVITATIONS_ENABLED === "true";
+  const evaluationEnabled = import.meta.env.VITE_EVALUATION_ENABLED !== "false";
   const isDev = import.meta.env.DEV || import.meta.env.MODE === "development";
 
   // Fetch active templates
@@ -88,6 +89,7 @@ export default function AssessmentSection({
   const [loadingResult, setLoadingResult] = useState(false);
   const [detailedResult, setDetailedResult] = useState(null);
   const [expandedResultAssignmentId, setExpandedResultAssignmentId] = useState(null);
+  const [submittedAnswers, setSubmittedAnswers] = useState(null);
   const pollingRef = useRef(null);
 
   const fetchDetailedHistory = useCallback(async (assignmentId) => {
@@ -296,6 +298,22 @@ export default function AssessmentSection({
 
     if (expandedResultAssignmentId === activeAssignment.id) {
       setExpandedResultAssignmentId(null);
+      return;
+    }
+
+    if (activeAssignment.status === "submitted" && !evaluationEnabled) {
+      setLoadingResult(true);
+      try {
+        const response = await API.get(`/assessments/assignments/${activeAssignment.id}/submitted-answers/`);
+        setSubmittedAnswers(response.data);
+      } catch (err) {
+        const errorData = err.response?.data || {};
+        showToast(errorData.detail || "Failed to load submitted answers.", "error");
+        return;
+      } finally {
+        setLoadingResult(false);
+      }
+      setExpandedResultAssignmentId(activeAssignment.id);
       return;
     }
 
@@ -734,7 +752,7 @@ export default function AssessmentSection({
                     {sending ? "Resending Invitation..." : "Resend Invitation Link"}
                   </button>
 
-                  {activeAssignment?.status === "submitted" && (
+                  {activeAssignment?.status === "submitted" && evaluationEnabled && (
                     <button
                       type="button"
                       onClick={handleQueue}
@@ -782,7 +800,7 @@ export default function AssessmentSection({
                     </button>
                   )}
 
-                  {activeAssignment?.status === "failed" && (
+                  {activeAssignment?.status === "failed" && evaluationEnabled && (
                     <button
                       type="button"
                       onClick={handleRetry}
@@ -800,6 +818,11 @@ export default function AssessmentSection({
                     >
                       {retrying ? "Retrying..." : "Retry Evaluation"}
                     </button>
+                  )}
+                  {!evaluationEnabled && activeAssignment?.status === "submitted" && (
+                    <div className="text-warning small fw-semibold" style={{ fontSize: "12px", marginTop: "4px" }}>
+                      Evaluation is temporarily unavailable.
+                    </div>
                   )}
                 </div>
 
@@ -882,6 +905,77 @@ export default function AssessmentSection({
                           <line x1="12" x2="12.01" y1="16" y2="16"/>
                         </svg>
                         <span>Maximum evaluation attempts reached (3/3 attempts used). Further automatic retries are blocked for this assessment.</span>
+                      </div>
+                    )}
+                  </div>
+                )}                {activeAssignment?.status === "submitted" && !evaluationEnabled && (
+                  <div
+                    className="mt-3 p-3 rounded"
+                    style={{
+                      backgroundColor: "rgba(245, 158, 11, 0.04)",
+                      border: "1px solid rgba(245, 158, 11, 0.2)",
+                    }}
+                  >
+                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                      <div>
+                        <span className="text-warning small text-uppercase fw-bold tracking-wider" style={{ fontSize: "10px", opacity: 0.6 }}>
+                          Submitted Answers
+                        </span>
+                        <h6 className="fw-bold text-white mb-0" style={{ fontSize: "15px" }}>
+                          Status: Graded (Manual Review Only)
+                        </h6>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleDetailedResult}
+                        disabled={loadingResult}
+                        className="btn btn-xs fw-semibold text-white px-3 py-1.5"
+                        style={{
+                          backgroundColor: loadingResult
+                            ? "rgba(255, 255, 255, 0.05)"
+                            : "var(--screenai-primary)",
+                          cursor: loadingResult ? "not-allowed" : "pointer",
+                          border: "none",
+                        }}
+                      >
+                        {loadingResult
+                          ? "Loading Answers..."
+                          : isShowingDetailedResult
+                            ? "Hide Submitted Answers"
+                            : "View Submitted Answers"}
+                      </button>
+                    </div>
+
+                    {isShowingDetailedResult && (
+                      <div className="mt-3 pt-3 border-top border-secondary">
+                        {submittedAnswers?.length ? (
+                          <div className="d-flex flex-column gap-3">
+                            <div className="p-3 rounded mb-2 text-warning bg-dark small" style={{ border: "1px dashed var(--screenai-border)" }}>
+                              <strong>Evaluation is disabled. Below are the candidate's submitted answers for manual review.</strong>
+                            </div>
+                            {submittedAnswers.map((answer, index) => (
+                              <div
+                                key={index}
+                                className="p-3 rounded text-start bg-dark"
+                                style={{ border: "1px solid var(--screenai-border)" }}
+                              >
+                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                  <div className="fw-bold text-white small">
+                                    {answer.question_title || `Question ${index + 1}`}
+                                  </div>
+                                  <span className="badge text-uppercase text-secondary" style={{ fontSize: "10px" }}>
+                                    {answer.selected_language}
+                                  </span>
+                                </div>
+                                <pre className="p-3 rounded text-light font-monospace small bg-black overflow-auto" style={{ maxHeight: "250px", border: "1px solid rgba(255,255,255,0.05)", whiteSpace: "pre-wrap" }}>
+                                  <code>{answer.candidate_code || "# No code submitted"}</code>
+                                </pre>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-secondary small py-2">No submitted answers found.</div>
+                        )}
                       </div>
                     )}
                   </div>

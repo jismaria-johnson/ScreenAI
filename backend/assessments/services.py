@@ -1581,6 +1581,8 @@ def queue_submission_for_evaluation(assessment_id, queued_by_user):
     Transitions candidate assessment status from submitted to queued.
     """
     assessment = CandidateAssessment.objects.select_for_update().get(pk=assessment_id)
+    if assessment.status == "queued":
+        return assessment
     if assessment.status != "submitted":
         raise ValidationError("Only submitted assessments can be queued for evaluation.")
     
@@ -1727,21 +1729,19 @@ def evaluate_candidate_assessment(assessment, _submission=None):
                                   for q_id in question_ids}
 
         elif submission is not None and submission.private_notebook:
-            # FALLBACK: legacy notebook upload — only if the file actually exists on disk
-            notebook_path = None
-            try:
-                notebook_path = submission.private_notebook.path
-            except Exception:
-                notebook_path = None
-
-            if notebook_path and os.path.isfile(notebook_path):
+            # FALLBACK: legacy notebook upload — only if the file exists
+            if submission.private_notebook:
                 logger.info(
                     f"[{assessment.id}] No DB answers found. "
-                    f"Falling back to legacy notebook at {notebook_path}."
+                    f"Falling back to legacy notebook: {submission.private_notebook.name}."
                 )
                 try:
+                    try:
+                        notebook_file = submission.private_notebook.path
+                    except (AttributeError, NotImplementedError):
+                        notebook_file = submission.private_notebook
                     notebook_answers = extract_candidate_answers_from_notebook(
-                        notebook_path, question_ids
+                        notebook_file, question_ids
                     )
                     # Wrap as {code, language} dict for unified handling below
                     candidate_answers = {
@@ -1755,8 +1755,7 @@ def evaluate_candidate_assessment(assessment, _submission=None):
                     )
             else:
                 logger.warning(
-                    f"[{assessment.id}] private_notebook field references a file that does "
-                    f"not exist on disk. Failing gracefully."
+                    f"[{assessment.id}] private_notebook field is not set. Failing gracefully."
                 )
                 raise EvaluationError(
                     "submission_missing",

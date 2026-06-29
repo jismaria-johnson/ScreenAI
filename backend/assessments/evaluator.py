@@ -19,7 +19,7 @@ class SandboxResult:
         self.is_oom = is_oom
 
 
-def extract_candidate_answers_from_notebook(notebook_path, question_ids):
+def extract_candidate_answers_from_notebook(notebook_file_obj_or_path, question_ids):
     """
     Reads the notebook file. Extracts the candidate answer code block for each question ID.
     Locates answer code cells by their cell.metadata['screenai_question_id'].
@@ -32,10 +32,20 @@ def extract_candidate_answers_from_notebook(notebook_path, question_ids):
         answers[q_id] = ""
 
     try:
-        with open(notebook_path, "r", encoding="utf-8") as f:
-            nb = nbformat.read(f, as_version=4)
+        if hasattr(notebook_file_obj_or_path, "open"):
+            with notebook_file_obj_or_path.open("rb") as f:
+                content = f.read().decode("utf-8", errors="replace")
+                nb = nbformat.reads(content, as_version=4)
+        elif hasattr(notebook_file_obj_or_path, "read"):
+            content = notebook_file_obj_or_path.read()
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", errors="replace")
+            nb = nbformat.reads(content, as_version=4)
+        else:
+            with open(notebook_file_obj_or_path, "r", encoding="utf-8") as f:
+                nb = nbformat.read(f, as_version=4)
     except Exception as e:
-        logger.error(f"Failed to read notebook {notebook_path}: {e}")
+        logger.error(f"Failed to read notebook {notebook_file_obj_or_path}: {e}")
         return answers
 
     seen_questions = set()

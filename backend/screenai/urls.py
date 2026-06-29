@@ -20,7 +20,13 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({"status": "healthy"})
+
 urlpatterns = [
+    path('api/health/', health_check, name='health-check'),
     path('admin/', admin.site.urls),
 
     path('api/accounts/', include('accounts.urls')),

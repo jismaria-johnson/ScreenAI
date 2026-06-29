@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import API, { MEDIA_BASE_URL } from "../api/axiosConfig";
+import API from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -364,18 +364,29 @@ function HRApplications() {
     }
   };
 
-  const getResumeUrl = (resumePath) => {
-    if (!resumePath) {
-      return "#";
+  const handleDownloadResume = async (applicationId, action = "view") => {
+    try {
+      const response = await API.get(`/applications/admin/directory/${applicationId}/resume/`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const objectUrl = URL.createObjectURL(blob);
+      if (action === "view") {
+        window.open(objectUrl, "_blank");
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      } else {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = `resume_application_${applicationId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err) {
+      console.error("Failed to download resume:", err);
+      showToast("Failed to load resume. Make sure you have authorized access.", "error");
     }
-
-    if (resumePath.startsWith("http")) {
-      return resumePath;
-    }
-
-    const base = MEDIA_BASE_URL.endsWith("/") ? MEDIA_BASE_URL.slice(0, -1) : MEDIA_BASE_URL;
-    const normalizedPath = resumePath.startsWith("/") ? resumePath : `/${resumePath}`;
-    return `${base}${normalizedPath}`;
   };
 
   const getCandidateName = (application) => {
@@ -1101,26 +1112,19 @@ function HRApplications() {
           </div>
 
           <div className="d-flex gap-2 flex-wrap mt-3 mb-4">
-            <a
-              href={getResumeUrl(
-                selectedApplication.resume
-              )}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              onClick={() => handleDownloadResume(selectedApplication.id, "view")}
               className="btn btn-outline-primary"
             >
               View Resume
-            </a>
+            </button>
 
-            <a
-              href={getResumeUrl(
-                selectedApplication.resume
-              )}
-              download
+            <button
+              onClick={() => handleDownloadResume(selectedApplication.id, "download")}
               className="btn btn-outline-dark"
             >
               Download Resume
-            </a>
+            </button>
 
             {selectedApplication.application_status === "hired" ? (
               <div className="w-100 alert alert-success border-0 py-2 px-3 mt-2 mb-0 small fw-bold">

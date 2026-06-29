@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import API, { MEDIA_BASE_URL } from "../api/axiosConfig";
+import API from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 import { clearAuthData } from "../utils/auth";
@@ -566,12 +566,29 @@ function AdminDashboard() {
     return candidate.progressions[candidate.progressions.length - 1].stage;
   };
 
-  const getResumeUrl = (resumePath) => {
-    if (!resumePath) return "#";
-    if (resumePath.startsWith("http")) return resumePath;
-    const base = MEDIA_BASE_URL.endsWith("/") ? MEDIA_BASE_URL.slice(0, -1) : MEDIA_BASE_URL;
-    const normalizedPath = resumePath.startsWith("/") ? resumePath : `/${resumePath}`;
-    return `${base}${normalizedPath}`;
+  const handleDownloadResume = async (applicationId, action = "view") => {
+    try {
+      const response = await API.get(`/applications/admin/directory/${applicationId}/resume/`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const objectUrl = URL.createObjectURL(blob);
+      if (action === "view") {
+        window.open(objectUrl, "_blank");
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      } else {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = `resume_application_${applicationId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err) {
+      console.error("Failed to download resume:", err);
+      showToast("Failed to load resume. Make sure you have authorized access.", "error");
+    }
   };
 
   // Metrics Calculations
@@ -1507,15 +1524,13 @@ function AdminDashboard() {
                         <p className="text-secondary small mb-2">{selectedCandidate.job_title} — {selectedCandidate.company_name}</p>
                         <div className="d-flex justify-content-between align-items-center">
                           <span className="text-secondary small" style={{ fontSize: "10px" }}>Email: {selectedCandidate.candidate_email || "N/A"}</span>
-                          <a
-                            href={getResumeUrl(selectedCandidate.resume)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-xs btn-outline-primary fw-bold text-decoration-none py-0.5 px-2"
+                          <button
+                            onClick={() => handleDownloadResume(selectedCandidate.id, "view")}
+                            className="btn btn-xs btn-outline-primary fw-bold py-0.5 px-2"
                             style={{ fontSize: "10px" }}
                           >
                             View Resume
-                          </a>
+                          </button>
                         </div>
                       </div>
 

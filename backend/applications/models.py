@@ -277,7 +277,7 @@ class Application(models.Model):
             score_resume_with_gemini,
         )
 
-        extracted_text = extract_text_from_pdf(self.resume.path)
+        extracted_text = extract_text_from_pdf(self.resume)
         self.extracted_resume_text = extracted_text
 
         if not extracted_text:

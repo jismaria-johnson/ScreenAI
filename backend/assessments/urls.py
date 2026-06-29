@@ -25,6 +25,7 @@ from .views import (
     CandidateAssessmentRetryView,
     CandidateAssessmentResultView,
     CandidateAssessmentDevAccessLinkView,
+    CandidateSubmittedAnswersView,
 )
 
 urlpatterns = [
@@ -152,5 +153,10 @@ urlpatterns = [
         "assignments/<uuid:pk>/dev-access-link/",
         CandidateAssessmentDevAccessLinkView.as_view(),
         name="assessment-dev-access-link",
+    ),
+    path(
+        "assignments/<uuid:pk>/submitted-answers/",
+        CandidateSubmittedAnswersView.as_view(),
+        name="assessment-submitted-answers",
     ),
 ]
