@@ -57,6 +57,18 @@ const SCORE_COMPONENTS = [
   { key: "relevance_score", label: "Overall Relevance", max: 10 },
 ];
 
+const WORKSPACE_SECTIONS = new Set([
+  "summary",
+  "aiEvaluation",
+  "interviews",
+  "assessment",
+  "decision",
+  "progression",
+]);
+
+const normalizeWorkspaceSection = (section) =>
+  WORKSPACE_SECTIONS.has(section) ? section : "summary";
+
 const renderScoreBreakdownGrid = (appData) => {
   if (!appData) return null;
   return (
@@ -227,7 +239,8 @@ function CandidateWorkspaceContent({
   renderScoreBreakdownGrid,
   hasDetailedContent,
   renderDetailedEvaluationContent,
-  initialSection = null
+  initialSection = null,
+  onWorkspaceSectionChange = null
 }) {
   const [expandedSections, setExpandedSections] = useState(() => {
     const sections = {
@@ -257,6 +270,7 @@ function CandidateWorkspaceContent({
 
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   const [showDetailedEvaluation, setShowDetailedEvaluation] = useState(false);
+  const [reevaluatingAi, setReevaluatingAi] = useState(false);
 
   const [progStage, setProgStage] = useState(application?.application_status === "hired" ? "Onboarding" : "Offer Extended");
   const [progNotes, setProgNotes] = useState("");
@@ -268,7 +282,11 @@ function CandidateWorkspaceContent({
   }, [application?.application_status]);
 
   const toggleSection = (sec) => {
+    const nextExpanded = !expandedSections[sec];
     setExpandedSections((prev) => ({ ...prev, [sec]: !prev[sec] }));
+    if (nextExpanded && onWorkspaceSectionChange) {
+      onWorkspaceSectionChange(sec);
+    }
   };
 
   const handleAddProgressionLocal = async (e) => {
@@ -292,6 +310,27 @@ function CandidateWorkspaceContent({
       showToast("Failed to add progression stage.", "error");
     } finally {
       setUpdatingProg(false);
+    }
+  };
+
+  const handleAiReevaluation = async () => {
+    setReevaluatingAi(true);
+    try {
+      const response = await API.post(`/applications/${application.id}/reevaluate-ai/`);
+      onApplicationUpdate?.(response.data);
+      showToast("AI evaluation completed successfully.", "success");
+      fetchDashboardData(true);
+    } catch (err) {
+      const updatedApplication = err.response?.data?.application;
+      if (updatedApplication) {
+        onApplicationUpdate?.(updatedApplication);
+      }
+      showToast(
+        err.response?.data?.detail || "AI evaluation is still unavailable. Please try again later.",
+        "error"
+      );
+    } finally {
+      setReevaluatingAi(false);
     }
   };
 
@@ -447,8 +486,20 @@ function CandidateWorkspaceContent({
 
         {expandedSections.aiEvaluation && (
           <div className="mt-3">
-            {application.skills_score === null ? (
-              <p className="text-muted small mb-0">No AI evaluation available</p>
+            {!hasAiData ? (
+              <div className="d-flex flex-column align-items-start gap-2">
+                <p className="text-muted small mb-0">
+                  {application.ai_feedback || "No AI evaluation available"}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-outline-primary btn-sm fw-bold"
+                  onClick={handleAiReevaluation}
+                  disabled={reevaluatingAi}
+                >
+                  {reevaluatingAi ? "Re-evaluating..." : "Re-evaluate AI Score"}
+                </button>
+              </div>
             ) : (
               <div>
                 <div className="d-flex justify-content-between align-items-center mb-3 p-2.5 rounded screenai-evaluation-card">
@@ -1264,15 +1315,29 @@ function HRDashboard() {
       closeTimeoutRef.current = null;
     }
     const id = (applicationOrId && typeof applicationOrId === "object") ? applicationOrId.id : applicationOrId;
+    const section = normalizeWorkspaceSection(initialSection);
     setActiveWorkspaceAppId(id);
-    setActiveWorkspaceSection(initialSection || "summary");
+    setActiveWorkspaceSection(section);
     setActivePopup({ cardName: null, anchorEl: null });
     setOpenedByKeyboard(false);
-  }, []);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", "candidates");
+      next.set("candidateId", String(id));
+      next.set("candidateSection", section);
+      return next;
+    });
+  }, [setSearchParams]);
 
   const closeCandidateWorkspace = useCallback(() => {
     setActiveWorkspaceAppId(null);
     setActiveWorkspaceSection("summary");
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("candidateId");
+      next.delete("candidateSection");
+      return next;
+    });
     if (lastActiveElementRef.current && lastActiveElementRef.current.isConnected) {
       try {
         lastActiveElementRef.current.focus();
@@ -1281,7 +1346,20 @@ function HRDashboard() {
       }
     }
     lastActiveElementRef.current = null;
-  }, []);
+  }, [setSearchParams]);
+
+  const handleWorkspaceSectionChange = useCallback((section) => {
+    const normalizedSection = normalizeWorkspaceSection(section);
+    setActiveWorkspaceSection(normalizedSection);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (activeWorkspaceAppId) {
+        next.set("candidateId", String(activeWorkspaceAppId));
+      }
+      next.set("candidateSection", normalizedSection);
+      return next;
+    });
+  }, [activeWorkspaceAppId, setSearchParams]);
 
   const clearCandidateFilters = useCallback(() => {
     setAppSearch("");
@@ -1361,9 +1439,45 @@ function HRDashboard() {
   }, [openCandidateWorkspace]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- close workspace when active tab changes
-    closeCandidateWorkspace();
-  }, [activeTab, closeCandidateWorkspace]);
+    const urlCandidateId = searchParams.get("candidateId");
+    const urlSection = normalizeWorkspaceSection(searchParams.get("candidateSection"));
+
+    if (activeTab !== "candidates" || !urlCandidateId) {
+      if (activeWorkspaceAppId !== null) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- keep modal state aligned with URL navigation
+        setActiveWorkspaceAppId(null);
+        setActiveWorkspaceSection("summary");
+      }
+      return;
+    }
+
+    if (allApplications.length > 0) {
+      const exists = allApplications.some((app) => String(app.id) === String(urlCandidateId));
+      if (!exists) {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("candidateId");
+          next.delete("candidateSection");
+          return next;
+        });
+        return;
+      }
+    }
+
+    if (String(activeWorkspaceAppId || "") !== String(urlCandidateId)) {
+      setActiveWorkspaceAppId(urlCandidateId);
+    }
+    if (activeWorkspaceSection !== urlSection) {
+      setActiveWorkspaceSection(urlSection);
+    }
+  }, [
+    activeTab,
+    activeWorkspaceAppId,
+    activeWorkspaceSection,
+    allApplications,
+    searchParams,
+    setSearchParams,
+  ]);
 
   // Load Dashboard Data
   const fetchDashboardData = useCallback(async (silent = false) => {
@@ -1426,8 +1540,9 @@ function HRDashboard() {
 
   // Sync tab navigation query parameters
   const handleTabChange = (tabName) => {
+    setActiveWorkspaceAppId(null);
+    setActiveWorkspaceSection("summary");
     setSearchParams({ tab: tabName });
-    closeCandidateWorkspace();
   };
 
   const showToast = (message, type = "success") => {
@@ -4524,6 +4639,7 @@ function HRDashboard() {
                 hasDetailedContent={hasDetailedContent}
                 renderDetailedEvaluationContent={renderDetailedEvaluationContent}
                 initialSection={activeWorkspaceSection}
+                onWorkspaceSectionChange={handleWorkspaceSectionChange}
               />
             </DialogContent>
 

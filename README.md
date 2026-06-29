@@ -28,6 +28,7 @@ ScreenAI solves the bottleneck of high-volume candidate screening by:
 
 - Letting HR users post jobs and share a **public shareable link** — no candidate login required to apply.
 - Automatically extracting text from uploaded PDF resumes and sending them to **Google Gemini** for multi-dimensional scoring.
+- Automatically evaluating new applications, with a recruiter-side **Re-evaluate AI Score** action when the initial provider call fails.
 - Providing HR users with a ranked, AI-annotated candidate list inside a rich dashboard.
 - Enabling HR users to create **versioned assessment templates** with coding questions and send personalized, time-limited invitations via **Brevo transactional email**.
 - Delivering an in-browser coding environment (Monaco Editor) where candidates write and run code against visible and hidden test cases.
@@ -52,8 +53,8 @@ ScreenAI solves the bottleneck of high-volume candidate screening by:
 |  ai_engine (Gemini API)                              |
 +------+----------------+---------------+-------------+
        |                |               |
-  SQLite DB        media/resumes   Docker Sandbox
-  (db.sqlite3)    (PDF files)      (code execution)
+ PostgreSQL DB      media/resumes   Docker Sandbox
+ (SQLite local)    (PDF files)      (code execution)
 ```
 
 - **Backend**: Django 6 + Django REST Framework, JWT via `djangorestframework-simplejwt` with a custom token-versioning layer.
@@ -71,7 +72,7 @@ ScreenAI solves the bottleneck of high-volume candidate screening by:
 | Backend framework | Django 6.0 |
 | API layer | Django REST Framework 3.17 |
 | Authentication | JWT via `djangorestframework-simplejwt` 5.5 + custom token versioning |
-| Database | SQLite (development) |
+| Database | PostgreSQL (production), SQLite fallback (local development) |
 | AI scoring | Google Generative AI SDK (`google-generativeai` 0.8) — Gemini model |
 | Resume parsing | `pdfplumber` 0.11 |
 | Email delivery | Brevo REST API v3 |
@@ -229,7 +230,7 @@ ScreenAI/
 3. Candidate fills in name, email, phone, education, and uploads a PDF resume.
 4. On submit, a `POST /api/applications/public/<token>/` request is made.
 5. The backend creates a `CandidateIdentity` of type `public` and an `Application` record.
-6. The application's `evaluate_and_save()` method is called synchronously:
+6. The application's `evaluate_and_save()` method is called automatically:
    - **`resume_parser.py`** uses `pdfplumber` to extract raw text from the PDF.
    - **`gemini_scorer.py`** sends a structured prompt to the configured **Gemini model** containing the resume text and job requirements.
    - Gemini returns a JSON payload with 6 sub-scores (Skills, Experience, Projects, Company Role, Education, Relevance), reasons, matched/missing skills, experience summary, worked companies, total experience years, AI feedback, and a `recommendation` (`shortlist`/`review`/`reject`).
@@ -239,7 +240,8 @@ ScreenAI/
 
 7. HR navigates to the **Candidates** tab and sees all applicants ranked by AI score.
 8. HR can read the full AI breakdown for any candidate (score breakdown, matched/missing skills, experience summary, project highlights, AI recommendation).
-9. HR manually sets the application status to `shortlisted`, `rejected`, or `hired`.
+9. If automatic scoring fails, HR can use **Re-evaluate AI Score** from the candidate workspace; successfully scored applications are not re-evaluated accidentally.
+10. HR manually sets the application status to `shortlisted`, `rejected`, or `hired`.
 
 ---
 
@@ -283,7 +285,7 @@ ScreenAI/
 
 ### Stage 5 — Secure Code Evaluation
 
-1. HR (or admin) triggers evaluation: `POST /api/assessments/assignments/<uuid>/queue/`.
+1. Final submission automatically queues the assessment for evaluation. If automatic queueing does not complete, HR or admin can use **Start Evaluation** (`POST /api/assessments/assignments/<uuid>/queue/`) as a manual fallback.
 2. `evaluator.py` builds a **private test harness** Python script that:
    - Embeds the candidate's code (from saved answers or extracted notebook cells).
    - Embeds hidden test cases from the private grading snapshot (base64-encoded to prevent injection).
@@ -436,6 +438,8 @@ Legacy paths (`/my-jobs`, `/add-job`, `/hr-applications`, `/profile`, `/edit-pro
 | `DJANGO_SECRET_KEY` | `development-only-secret-key` | Django secret key — **must be changed in production** |
 | `DJANGO_DEBUG` | `True` | Enable debug mode |
 | `DJANGO_ALLOWED_HOSTS` | `127.0.0.1,localhost` | Comma-separated allowed hosts |
+| `DATABASE_URL` | — | PostgreSQL connection URL; when empty, local SQLite is used |
+| `DATABASE_CONN_MAX_AGE` | `60` | Persistent PostgreSQL connection lifetime in seconds |
 | `GEMINI_API_KEY` | — | **Required** — Google Gemini API key |
 | `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Gemini model name |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed CORS origins |
@@ -478,6 +482,7 @@ Legacy paths (`/my-jobs`, `/add-job`, `/hr-applications`, `/profile`, `/edit-pro
 
 - Python 3.11+
 - Node.js 18+
+- PostgreSQL (recommended for production; SQLite remains available locally)
 - Docker (required for code evaluation in Stage 5)
 - A Google Gemini API key
 
@@ -542,7 +547,21 @@ Frontend runs at: `http://localhost:5173`
 
 ```bash
 docker pull python:3.11-slim
+docker pull node:lts-slim
 ```
+
+---
+
+## Production Deployment Checklist
+
+- Use PostgreSQL by setting `DATABASE_URL`; see [backend/POSTGRES_MIGRATION.md](backend/POSTGRES_MIGRATION.md) when moving existing SQLite data.
+- Set `DJANGO_DEBUG=False`, generate strong unique values for `DJANGO_SECRET_KEY`, `ASSESSMENT_TOKEN_HMAC_KEY`, and `BREVO_WEBHOOK_SECRET`, and configure `DJANGO_ALLOWED_HOSTS`.
+- Set `CORS_ALLOWED_ORIGINS`, `ASSESSMENT_FRONTEND_URL`, and the frontend `VITE_API_BASE_URL` to the deployed HTTPS URLs.
+- Run `python manage.py migrate` before starting the API and serve the Vite output produced by `npm run build`.
+- Persist `media/` and `private_assessments/`, and include both paths in the backup plan.
+- Run the assessment worker with `python manage.py process_assessments`; PostgreSQL supports safe concurrent workers.
+- Install Docker on the backend host and pull both evaluator images. The backend and assessment worker must be able to invoke the Docker daemon.
+- Put the frontend and API behind HTTPS, enable live Brevo delivery only after its sender and webhook are configured, and verify one complete application and assessment flow after release.
 
 ---
 

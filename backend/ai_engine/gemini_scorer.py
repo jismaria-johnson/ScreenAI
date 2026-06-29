@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 
 import google.generativeai as genai
@@ -6,6 +7,24 @@ from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
+
+AI_SCORING_PROMPT_VERSION = "2026-06-28-v2"
+
+
+def build_evaluation_fingerprint(resume_text, job):
+    normalized_resume = " ".join((resume_text or "").split())
+    payload = {
+        "prompt_version": AI_SCORING_PROMPT_VERSION,
+        "model": getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash-lite"),
+        "resume_text": normalized_resume,
+        "job_title": job.job_title,
+        "company_name": job.company_name,
+        "job_description": job.job_description,
+        "required_skills": job.required_skills,
+        "required_experience": job.required_experience,
+    }
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def parse_experience_years(value):
@@ -234,7 +253,11 @@ Constraints:
 
     try:
         response = model.generate_content(
-            prompt
+            prompt,
+            generation_config={
+                "temperature": 0,
+                "response_mime_type": "application/json",
+            },
         )
 
         result_text = (

@@ -6,6 +6,33 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from jobs.models import Job
 
 
+AI_EVALUATION_RESULT_FIELDS = (
+    "ai_score",
+    "skills_score",
+    "experience_score",
+    "projects_score",
+    "company_role_score",
+    "education_score",
+    "relevance_score",
+    "skills_reason",
+    "experience_score_reason",
+    "projects_score_reason",
+    "company_role_score_reason",
+    "education_score_reason",
+    "relevance_score_reason",
+    "project_summary",
+    "education_summary",
+    "matched_skills",
+    "missing_skills",
+    "experience_match",
+    "total_experience_years",
+    "worked_companies",
+    "experience_summary",
+    "ai_feedback",
+    "recommendation",
+)
+
+
 class CandidateIdentity(models.Model):
     IDENTITY_TYPE_CHOICES = (
         ("registered", "Registered"),
@@ -199,6 +226,17 @@ class Application(models.Model):
         default="not_evaluated",
     )
 
+    ai_evaluation_fingerprint = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+    )
+
+    ai_evaluator_version = models.CharField(
+        max_length=50,
+        blank=True,
+    )
+
     total_experience_years = models.FloatField(
         null=True,
         blank=True,
@@ -233,7 +271,11 @@ class Application(models.Model):
 
     def evaluate_and_save(self):
         from ai_engine.resume_parser import extract_text_from_pdf
-        from ai_engine.gemini_scorer import score_resume_with_gemini
+        from ai_engine.gemini_scorer import (
+            AI_SCORING_PROMPT_VERSION,
+            build_evaluation_fingerprint,
+            score_resume_with_gemini,
+        )
 
         extracted_text = extract_text_from_pdf(self.resume.path)
         self.extracted_resume_text = extracted_text
@@ -268,6 +310,25 @@ class Application(models.Model):
             self.save()
             return
 
+        fingerprint = build_evaluation_fingerprint(extracted_text, self.job)
+        cached_application = (
+            Application.objects.filter(
+                ai_evaluation_fingerprint=fingerprint,
+                ai_score__isnull=False,
+            )
+            .exclude(pk=self.pk)
+            .order_by("-submitted_at")
+            .first()
+        )
+
+        if cached_application:
+            for field_name in AI_EVALUATION_RESULT_FIELDS:
+                setattr(self, field_name, getattr(cached_application, field_name))
+            self.ai_evaluation_fingerprint = fingerprint
+            self.ai_evaluator_version = AI_SCORING_PROMPT_VERSION
+            self.save()
+            return
+
         ai_result = score_resume_with_gemini(extracted_text, self.job)
 
         self.ai_score = ai_result["ai_score"]
@@ -295,6 +356,8 @@ class Application(models.Model):
         self.experience_summary = ai_result["experience_summary"]
         self.ai_feedback = ai_result["ai_feedback"]
         self.recommendation = ai_result["recommendation"]
+        self.ai_evaluation_fingerprint = fingerprint
+        self.ai_evaluator_version = AI_SCORING_PROMPT_VERSION
         self.save()
 
 
@@ -331,7 +394,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 @receiver(post_save, sender=Application)
-def handle_application_hired(sender, instance, **kwargs):
+def handle_application_hired(sender, instance, raw=False, **kwargs):
+    if raw:
+        return
     if instance.application_status == "hired":
         if not instance.progressions.filter(stage="Hired").exists():
             updated_by = getattr(instance, "_updated_by", None)

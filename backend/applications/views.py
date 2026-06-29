@@ -1,5 +1,5 @@
 from django.db import transaction
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.exceptions import (
     ValidationError,
 )
@@ -442,6 +442,58 @@ class UpdateApplicationStatusView(
         return Response(
             serializer.data
         )
+
+
+class ReevaluateApplicationAIView(APIView):
+    permission_classes = [
+        IsHRUser,
+    ]
+
+    def post(self, request, pk):
+        try:
+            application = Application.objects.select_related("job").get(
+                pk=pk,
+                job__hr_user=request.user,
+            )
+        except Application.DoesNotExist:
+            raise ValidationError("Application not found.")
+
+        if application.ai_score is not None:
+            raise ValidationError(
+                "This application already has an AI score."
+            )
+
+        application.evaluate_and_save()
+        application.refresh_from_db()
+        serializer = HRApplicationSerializer(application)
+
+        from accounts.utils import log_audit
+        evaluation_succeeded = application.ai_score is not None
+        log_audit(
+            action="application_ai_reevaluated",
+            actor=request.user,
+            target_type="Application",
+            target_id=application.id,
+            target_label=f"{application.candidate_name or application.candidate_email} - {application.job.job_title}",
+            metadata={
+                "application_id": application.id,
+                "job_id": application.job_id,
+                "evaluation_succeeded": evaluation_succeeded,
+                "ai_score": application.ai_score,
+            },
+            request=request,
+        )
+
+        if not evaluation_succeeded:
+            return Response(
+                {
+                    "detail": application.ai_feedback or "AI evaluation is still unavailable.",
+                    "application": serializer.data,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class PublicApplicationCreateView(

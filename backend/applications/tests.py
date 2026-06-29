@@ -73,6 +73,12 @@ class GeminiScorerTestCase(TestCase):
         with patch("django.conf.settings.GEMINI_API_KEY", "dummy_key"):
             result = score_resume_with_gemini("Resume text", job)
 
+        generation_config = mock_model_instance.generate_content.call_args.kwargs[
+            "generation_config"
+        ]
+        self.assertEqual(generation_config["temperature"], 0)
+        self.assertEqual(generation_config["response_mime_type"], "application/json")
+
         # Check total ai_score calculation in Python
         self.assertEqual(result["ai_score"], 28 + 22 + 18 + 9 + 4 + 9) # 90
         self.assertEqual(result["skills_score"], 28)
@@ -310,6 +316,63 @@ class ApplicationEvaluationFlowTestCase(APITestCase):
         self.assertIsNone(application.skills_score)
         self.assertEqual(application.skills_reason, "Failed to evaluate.")
         self.assertEqual(application.recommendation, "not_evaluated")
+
+    @patch("ai_engine.resume_parser.extract_text_from_pdf")
+    @patch("ai_engine.gemini_scorer.score_resume_with_gemini")
+    def test_identical_resume_and_job_reuse_successful_evaluation(
+        self,
+        mock_scorer,
+        mock_parser,
+    ):
+        from ai_engine.gemini_scorer import (
+            AI_SCORING_PROMPT_VERSION,
+            build_evaluation_fingerprint,
+        )
+
+        resume_text = "Python Developer with employment from 2020 to present."
+        fingerprint = build_evaluation_fingerprint(resume_text, self.job)
+        Application.objects.create(
+            job=self.job,
+            candidate_name="Previously Scored",
+            candidate_email="scored@example.com",
+            resume=SimpleUploadedFile(
+                "scored.pdf",
+                b"%PDF-1.4\n%%EOF",
+                content_type="application/pdf",
+            ),
+            extracted_resume_text=resume_text,
+            ai_score=82,
+            skills_score=24,
+            experience_score=22,
+            projects_score=15,
+            company_role_score=8,
+            education_score=5,
+            relevance_score=8,
+            total_experience_years=5.5,
+            ai_feedback="Strong match.",
+            recommendation="shortlist",
+            ai_evaluation_fingerprint=fingerprint,
+            ai_evaluator_version=AI_SCORING_PROMPT_VERSION,
+        )
+        application = Application.objects.create(
+            job=self.job,
+            candidate_name="Same Resume",
+            candidate_email="same@example.com",
+            resume=SimpleUploadedFile(
+                "same.pdf",
+                b"%PDF-1.4\n%%EOF",
+                content_type="application/pdf",
+            ),
+        )
+        mock_parser.return_value = resume_text
+
+        application.evaluate_and_save()
+        application.refresh_from_db()
+
+        mock_scorer.assert_not_called()
+        self.assertEqual(application.ai_score, 82)
+        self.assertEqual(application.total_experience_years, 5.5)
+        self.assertEqual(application.ai_evaluation_fingerprint, fingerprint)
 
     def test_hr_sees_score_breakdown_and_compatibility(self):
         # Create an old application with null breakdown fields
@@ -784,6 +847,106 @@ class HRStatusTransitionTestCase(APITestCase):
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.app.progressions.count(), 2) # "Hired" and "Offer Extended"
+
+
+class ApplicationAIReevaluationTestCase(APITestCase):
+    def setUp(self):
+        from accounts.models import Profile
+
+        self.hr_user = User.objects.create_user(
+            username="ai_retry_hr",
+            password="password",
+        )
+        Profile.objects.create(user=self.hr_user, role="hr")
+        self.other_hr = User.objects.create_user(
+            username="ai_retry_other_hr",
+            password="password",
+        )
+        Profile.objects.create(user=self.other_hr, role="hr")
+        self.job = Job.objects.create(
+            hr_user=self.hr_user,
+            job_title="Python Developer",
+            company_name="TestCorp",
+            job_description="Build Python services",
+            required_skills="Python",
+            required_experience="2 years",
+            status="open",
+        )
+        self.application = Application.objects.create(
+            job=self.job,
+            candidate_name="AI Retry Candidate",
+            candidate_email="retry@example.com",
+            resume=SimpleUploadedFile(
+                "resume.pdf",
+                b"%PDF-1.4\n%dummy pdf content\n%%EOF",
+                content_type="application/pdf",
+            ),
+            ai_score=None,
+            ai_feedback="AI scoring failed. Please review this application manually.",
+            recommendation="not_evaluated",
+        )
+        self.url = f"/api/applications/{self.application.id}/reevaluate-ai/"
+
+    @patch.object(Application, "evaluate_and_save", autospec=True)
+    def test_hiring_hr_can_reevaluate_failed_ai_score(self, mock_evaluate):
+        def mark_success(application):
+            application.ai_score = 84
+            application.skills_score = 25
+            application.ai_feedback = "Strong match."
+            application.recommendation = "shortlist"
+            application.save(
+                update_fields=[
+                    "ai_score",
+                    "skills_score",
+                    "ai_feedback",
+                    "recommendation",
+                ]
+            )
+
+        mock_evaluate.side_effect = mark_success
+        self.client.force_authenticate(user=self.hr_user)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["ai_score"], 84)
+        self.assertEqual(response.data["recommendation"], "shortlist")
+        mock_evaluate.assert_called_once()
+
+    @patch.object(Application, "evaluate_and_save", autospec=True)
+    def test_provider_failure_returns_retryable_application(self, mock_evaluate):
+        self.client.force_authenticate(user=self.hr_user)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIsNone(response.data["application"]["ai_score"])
+        self.assertEqual(
+            response.data["application"]["recommendation"],
+            "not_evaluated",
+        )
+        mock_evaluate.assert_called_once()
+
+    @patch.object(Application, "evaluate_and_save", autospec=True)
+    def test_other_hr_cannot_reevaluate_application(self, mock_evaluate):
+        self.client.force_authenticate(user=self.other_hr)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_evaluate.assert_not_called()
+
+    @patch.object(Application, "evaluate_and_save", autospec=True)
+    def test_existing_ai_score_is_not_reevaluated(self, mock_evaluate):
+        self.application.ai_score = 75
+        self.application.recommendation = "review"
+        self.application.save(update_fields=["ai_score", "recommendation"])
+        self.client.force_authenticate(user=self.hr_user)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_evaluate.assert_not_called()
 
 
 class PublicApplicationValidationAndThrottlingTestCase(APITestCase):

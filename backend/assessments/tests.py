@@ -1582,7 +1582,8 @@ class CandidateAccessTestCase(APITestCase):
 
         # Verify statuses
         self.assessment.refresh_from_db()
-        self.assertEqual(self.assessment.status, "submitted")
+        self.assertEqual(res_submit.data["status"], "queued")
+        self.assertEqual(self.assessment.status, "queued")
         self.assertIsNotNone(self.assessment.submitted_at)
 
         submission = AssessmentSubmission.objects.get(candidate_assessment=self.assessment)

@@ -363,7 +363,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1050;
+  z-index: 2200;
   backdrop-filter: blur(4px);
   padding: 1rem;
 }

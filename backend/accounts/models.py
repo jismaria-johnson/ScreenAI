@@ -57,7 +57,9 @@ class UserSecurityState(models.Model):
 
 
 @receiver(post_save, sender=User)
-def create_user_security_state(sender, instance, created, **kwargs):
+def create_user_security_state(sender, instance, created, raw=False, **kwargs):
+    if raw:
+        return
     if created:
         try:
             UserSecurityState.objects.get_or_create(user=instance)

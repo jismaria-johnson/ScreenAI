@@ -49,6 +49,9 @@ from django.conf import settings
 from accounts.utils import log_audit
 from django.utils import timezone
 import hmac
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def custom_assessment_exception_handler(exc, context):
@@ -909,10 +912,26 @@ class CandidateAssessmentSubmitView(APIView):
         assessment = get_and_start_assessment_by_token(token)
         submit_candidate_assessment(assessment)
         assessment.refresh_from_db()
+        auto_queue_error = None
+        if assessment.status == "submitted":
+            try:
+                assessment = queue_submission_for_evaluation(assessment.id, queued_by_user=None)
+                import sys
+                if "test" not in sys.argv:
+                    trigger_evaluation_in_background(assessment.id)
+            except Exception:
+                auto_queue_error = "automatic_queue_failed"
+                logger.exception(
+                    "Failed to automatically queue assessment %s after candidate submission.",
+                    assessment.id,
+                )
+                assessment.refresh_from_db()
+
         return Response({
             "detail": "Assessment submitted successfully.",
             "status": assessment.status,
-            "submitted_at": assessment.submitted_at.isoformat() if assessment.submitted_at else None
+            "submitted_at": assessment.submitted_at.isoformat() if assessment.submitted_at else None,
+            "auto_queue_error": auto_queue_error,
         }, status=status.HTTP_200_OK)
 
 

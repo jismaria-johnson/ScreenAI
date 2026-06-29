@@ -86,7 +86,7 @@ function ConfirmModal({
       {/* Backdrop */}
       <div
         className="modal-backdrop fade show"
-        style={{ zIndex: 1498, backgroundColor: "rgba(2, 6, 23, 0.72)" }}
+        style={{ zIndex: 2398, backgroundColor: "rgba(2, 6, 23, 0.72)" }}
         onClick={submitting ? undefined : onCancel}
       />
       {/* Modal Container */}
@@ -97,7 +97,7 @@ function ConfirmModal({
         role="dialog"
         aria-labelledby="confirm-modal-title"
         aria-modal="true"
-        style={{ zIndex: 1499, outline: "none" }}
+        style={{ zIndex: 2399, outline: "none" }}
       >
         <div className="modal-dialog modal-dialog-centered">
           <div

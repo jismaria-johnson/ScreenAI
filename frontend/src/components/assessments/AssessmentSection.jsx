@@ -501,7 +501,7 @@ export default function AssessmentSection({
         break;
       case "submitted":
         title = "Solution Submitted";
-        message = "The candidate has submitted their final solution from the assessment workspace. It is ready for evaluation — click Evaluate to begin grading.";
+        message = "The candidate has submitted their final solution from the assessment workspace. Evaluation should start automatically shortly; use Start Evaluation only if it remains here.";
         borderStyle = "1px solid rgba(16, 185, 129, 0.2)";
         bgStyle = "rgba(16, 185, 129, 0.04)";
         break;
@@ -748,7 +748,7 @@ export default function AssessmentSection({
                         border: "none",
                       }}
                     >
-                      {queuing ? "Starting Evaluation…" : "Evaluate"}
+                      {queuing ? "Starting Evaluation…" : "Start Evaluation"}
                     </button>
                   )}
 

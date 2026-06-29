@@ -249,7 +249,7 @@ export default function PublicApplyJob() {
           />
         )}
         <div className="success-card">
-          <div className="success-icon">✓</div>
+          <div className="success-icon" aria-hidden="true" />
           <h2>Application Submitted Successfully!</h2>
           <p>Thank you for applying to this position.</p>
           <p>The HR team will review your application and contact you soon.</p>
@@ -270,14 +270,20 @@ export default function PublicApplyJob() {
           onClose={() => setToast({ message: "", type: "success" })}
         />
       )}
+      <main className="public-apply-shell">
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="job-header">
+      <header className="job-header">
+        <span className="job-header-label">Application</span>
         <h1>{job?.job_title}</h1>
         {job?.company_name && <p className="company">{job.company_name}</p>}
-      </div>
+      </header>
 
+      <div className="application-layout">
       <form onSubmit={handleSubmit} className="application-form">
+        <div className="application-form-heading">
+          <h2>Your Application</h2>
+        </div>
         <div className="form-group">
           <label htmlFor="candidate_name">Full Name *</label>
           <input
@@ -339,7 +345,7 @@ export default function PublicApplyJob() {
           />
         </div>
 
-        <div className="form-group">
+        <div className="form-group resume-field">
           <label htmlFor="resume">Resume (PDF) *</label>
           <input
             type="file"
@@ -367,7 +373,7 @@ export default function PublicApplyJob() {
       </form>
 
       {job && (
-        <div className="job-details-preview">
+        <aside className="job-details-preview">
           <h3>Job Details</h3>
           {job.job_description && (
             <div className="detail-section">
@@ -399,8 +405,10 @@ export default function PublicApplyJob() {
               <p>{new Date(job.application_deadline).toLocaleDateString()}</p>
             </div>
           )}
-        </div>
+        </aside>
       )}
+      </div>
+      </main>
     </div>
   );
 }
