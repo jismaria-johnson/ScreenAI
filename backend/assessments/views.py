@@ -7,7 +7,13 @@ from rest_framework.response import Response
 from rest_framework.views import exception_handler
 from applications.pagination import StandardPageNumberPagination
 
-from .models import AssessmentTemplate, AssessmentQuestion, CandidateAssessment, AssessmentEmailDelivery
+from .models import (
+    AssessmentTemplate,
+    AssessmentQuestion,
+    CandidateAssessment,
+    AssessmentEmailDelivery,
+    CandidateAnswer,
+)
 from .serializers import (
     AssessmentTemplateSerializer,
     AssessmentQuestionSerializer,

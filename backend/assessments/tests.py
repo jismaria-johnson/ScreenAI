@@ -25,7 +25,8 @@ from assessments.models import (
     AssessmentResult,
     AssessmentQuestionResult,
     validate_notebook_file,
-    AssessmentEmailDelivery
+    AssessmentEmailDelivery,
+    CandidateAnswer,
 )
 from assessments.services import (
     generate_raw_token,
@@ -1592,6 +1593,46 @@ class CandidateAccessTestCase(APITestCase):
         
         # Verify audit is logged exactly once
         self.assertTrue(AuditLog.objects.filter(action="assessment_submitted", target_id=self.assessment.id).exists())
+
+    def test_hiring_recruiter_can_review_submitted_answers(self):
+        submitted_at = timezone.now()
+        self.assessment.status = "submitted"
+        self.assessment.submitted_at = submitted_at
+        self.assessment.save(update_fields=["status", "submitted_at"])
+        CandidateAnswer.objects.create(
+            candidate_assessment=self.assessment,
+            question=self.q1,
+            answer_text="def add(a, b):\n    return a + b",
+            selected_language="python",
+        )
+        self.client.force_authenticate(user=self.recruiter)
+
+        response = self.client.get(
+            reverse("assessment-submitted-answers", kwargs={"pk": self.assessment.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["question_title"], "Q1")
+        self.assertEqual(response.data[0]["selected_language"], "python")
+        self.assertEqual(
+            response.data[0]["candidate_code"],
+            "def add(a, b):\n    return a + b",
+        )
+        self.assertNotIn("hidden_tests", response.data[0])
+
+    def test_unrelated_recruiter_cannot_review_submitted_answers(self):
+        other_recruiter = User.objects.create_user(
+            username="other_recruiter_s4",
+            password="password",
+        )
+        self.client.force_authenticate(user=other_recruiter)
+
+        response = self.client.get(
+            reverse("assessment-submitted-answers", kwargs={"pk": self.assessment.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_post_submit_upload_blocked(self):
         # Upload and submit
