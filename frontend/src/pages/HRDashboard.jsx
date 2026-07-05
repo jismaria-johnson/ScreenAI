@@ -9,6 +9,7 @@ import { DataGrid } from "@mui/x-data-grid";
 import { Popper, Paper, MenuList, MenuItem, ClickAwayListener, Dialog, DialogTitle, DialogContent, DialogActions, useTheme, useMediaQuery, Tooltip, Chip, IconButton, Menu } from "@mui/material";
 import AssessmentsManager from "../components/assessments/AssessmentsManager";
 import AssessmentSection from "../components/assessments/AssessmentSection";
+import AiScoreBadge from "../components/AiScoreBadge";
 
 
 const getCandidateName = (app) => {
@@ -2367,22 +2368,7 @@ function HRDashboard() {
       headerName: "AI Score",
       width: 90,
       type: "number",
-      renderCell: (params) => {
-        const score = params?.value;
-        let badgeStyle = { backgroundColor: "var(--screenai-danger)", color: "var(--screenai-text)" };
-        if (score === null || score === undefined) {
-          badgeStyle = { backgroundColor: "var(--screenai-text-muted)", color: "var(--screenai-text)" };
-        } else if (score >= 80) {
-          badgeStyle = { backgroundColor: "var(--screenai-success)", color: "var(--screenai-text)" };
-        } else if (score >= 50) {
-          badgeStyle = { backgroundColor: "var(--screenai-primary)", color: "var(--screenai-text)" };
-        }
-        return (
-          <span className="badge fw-bold" style={badgeStyle}>
-            {score !== null && score !== undefined ? score : "Pending"}
-          </span>
-        );
-      },
+      renderCell: (params) => <AiScoreBadge score={params?.value} />,
     },
     {
       field: "application_status",
