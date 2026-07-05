@@ -1,4 +1,4 @@
-# ScreenAI — AI-Powered Recruitment & Assessment Platform
+# ScreenAI : AI-Powered Recruitment & Assessment Platform
 
 ScreenAI is a full-stack recruitment platform that automates candidate screening using Google Gemini AI. It manages the entire hiring lifecycle — from job posting and public application intake, through AI-scored resume evaluation, structured interview tracking, and browser-based technical coding assessments with secure Docker-sandboxed evaluation.
 
