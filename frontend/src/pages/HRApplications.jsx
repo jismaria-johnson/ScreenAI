@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import API from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
+import { getApplicationStatusBadgeClass } from "../utils/applicationStatusBadge";
 
 const getPlaceholderForStage = (stageName) => {
   switch (stageName) {
@@ -23,20 +24,6 @@ const getPlaceholderForStage = (stageName) => {
       return "Add termination details and effective date";
     default:
       return "Add notes about this progression update";
-  }
-};
-
-const getStatusBadgeClass = (status) => {
-  switch (status) {
-    case "hired":
-      return "badge bg-success fs-6 px-3 py-2";
-    case "shortlisted":
-      return "badge bg-primary fs-6 px-3 py-2";
-    case "rejected":
-      return "badge bg-danger fs-6 px-3 py-2";
-    case "pending":
-    default:
-      return "badge bg-secondary fs-6 px-3 py-2";
   }
 };
 
@@ -1106,7 +1093,7 @@ function HRApplications() {
           {/* Status Badge */}
           <div className="mb-4 d-flex align-items-center gap-3 bg-light p-3 rounded-3 border">
             <span className="fw-bold text-dark mb-0">Current Recruitment Status:</span>
-            <span className={getStatusBadgeClass(selectedApplication.application_status)}>
+            <span className={getApplicationStatusBadgeClass(selectedApplication.application_status)}>
               {selectedApplication.application_status.toUpperCase()}
             </span>
           </div>

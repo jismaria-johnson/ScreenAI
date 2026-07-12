@@ -5,6 +5,7 @@ import API, { MEDIA_BASE_URL } from "../api/axiosConfig";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 import { clearAuthData } from "../utils/auth";
+import { getApplicationStatusColorClass, getApplicationStatusBadgeStyle } from "../utils/applicationStatusBadge";
 import { DataGrid } from "@mui/x-data-grid";
 import { Popper, Paper, MenuList, MenuItem, ClickAwayListener, Dialog, DialogTitle, DialogContent, DialogActions, useTheme, useMediaQuery, Tooltip, Chip, IconButton, Menu } from "@mui/material";
 import AssessmentsManager from "../components/assessments/AssessmentsManager";
@@ -24,29 +25,6 @@ const getResumeUrl = (path) => {
   const base = MEDIA_BASE_URL.endsWith("/") ? MEDIA_BASE_URL.slice(0, -1) : MEDIA_BASE_URL;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${base}${normalizedPath}`;
-};
-
-const getStatusBadgeStyle = (status) => {
-  const s = status ? status.toLowerCase() : "";
-  if (s === "hired" || s === "shortlisted") {
-    return {
-      backgroundColor: "rgba(16, 185, 129, 0.12)",
-      color: "#10b981",
-      border: "1px solid #10b981",
-    };
-  }
-  if (s === "rejected") {
-    return {
-      backgroundColor: "rgba(240, 93, 94, 0.12)",
-      color: "#f05d5e",
-      border: "1px solid #f05d5e",
-    };
-  }
-  return {
-    backgroundColor: "rgba(148, 163, 184, 0.12)",
-    color: "#94a3b8",
-    border: "1px solid #94a3b8",
-  };
 };
 
 const SCORE_COMPONENTS = [
@@ -2376,10 +2354,7 @@ function HRDashboard() {
       width: 100,
       renderCell: (params) => {
         const status = params?.value;
-        let badgeColor = "bg-secondary";
-        if (status === "hired") badgeColor = "bg-success";
-        else if (status === "rejected") badgeColor = "bg-danger";
-        else if (status === "shortlisted") badgeColor = "bg-primary";
+        const badgeColor = getApplicationStatusColorClass(status);
         return (
           <span className={`badge ${badgeColor} text-capitalize`}>
             {status || "N/A"}
@@ -4566,7 +4541,7 @@ function HRDashboard() {
                 </div>
                 <span
                   style={{
-                    ...getStatusBadgeStyle(activeWorkspaceApp.application_status),
+                    ...getApplicationStatusBadgeStyle(activeWorkspaceApp.application_status),
                     padding: "6px 12px",
                     borderRadius: "4px",
                     fontSize: "0.85rem",
